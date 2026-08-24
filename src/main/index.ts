@@ -298,6 +298,14 @@ app.whenReady().then(async () => {
         ? `你的监控关键词：\n${currentTarget.keywords.map((entry, index) => `${index + 1}. ${entry.keyword}${entry.excludeKeywords.length ? `（屏蔽：${entry.excludeKeywords.join('、')}）` : ''}`).join('\n')}`
         : `你还没有订阅关键词。\n\n${qqKeywordHelp()}`
     }
+    if (command.type === 'clear') {
+      if (!command.confirmed) return `将清除当前${target.type === 'group' ? '群聊' : '私聊'}的全部 ${currentTarget.keywords.length} 个关键词订阅。\n如确认，请发送：清除所有关键词 确认`
+      if (!currentTarget.keywords.length) return '你还没有订阅关键词。'
+      await engine.updateSettings({
+        qqBotTargets: settings.qqBotTargets.map((item) => item.id === target.id ? { ...item, keywords: [] } : item)
+      })
+      return `已清除当前${target.type === 'group' ? '群聊' : '私聊'}的全部关键词订阅。不会影响其他用户或群聊的订阅。`
+    }
     const normalized = command.keyword.toLocaleLowerCase()
     if (command.type === 'add') {
       if (currentTarget.keywords.some((entry) => entry.keyword.toLocaleLowerCase() === normalized)) return `你已经订阅了“${command.keyword}”。如需调整屏蔽词，请先移除后重新添加。`

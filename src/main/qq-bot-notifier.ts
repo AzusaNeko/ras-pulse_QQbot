@@ -137,6 +137,7 @@ export class QQBotNotifier {
         { type: 'command', name: '/添加关键词 ', desc: '选中后填写关键词' },
         { type: 'command', name: '/移除关键词 ', desc: '选中后填写关键词' },
         { type: 'command', name: '/关键词列表', desc: '查看我的订阅' },
+        { type: 'command', name: '/清除全部', desc: '清空前会要求确认' },
         { type: 'command', name: '/帮助', desc: '查看使用说明' }
       ],
       remark: 'ras-pulse-command-panel-v1'
@@ -150,6 +151,7 @@ export class QQBotNotifier {
             type: 'menu', name: '监控管理', sub_menu_items: [
               { type: 'send_message', name: '移除关键词', send_message: '/移除关键词 ' },
               { type: 'send_message', name: '关键词列表', send_message: '/关键词列表' },
+              { type: 'send_message', name: '清除所有关键词', send_message: '/清除所有关键词' },
               { type: 'send_message', name: '帮助', send_message: '/帮助' }
             ]
           }
