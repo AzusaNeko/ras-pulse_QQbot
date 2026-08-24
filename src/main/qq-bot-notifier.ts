@@ -55,7 +55,25 @@ export class QQBotNotifier {
 
   async sendItem(item: MercariItem, settings: AppSettings): Promise<QQDeliveryResult> {
     const content = this.formatItem(item, settings)
-    return this.sendText(content, settings)
+    if (!settings.qqBotEnabled) throw new Error('请先开启 QQ 机器人推送')
+    const targets = this.enabledTargets(settings)
+    const secret = await this.requireSecret(settings)
+    const client = this.getClient(settings.qqBotAppId, secret)
+    const outcomes = await Promise.allSettled(targets.map(async (target) => {
+      const replyTarget = { scope: target.type, targetId: target.targetId.trim() } as const
+      if (!this.isProductImageUrl(item.thumbnail)) {
+        await client.sendText(replyTarget, content)
+        return
+      }
+      try {
+        // QQ retrieves the image directly from the product URL; no image is stored locally.
+        await client.sendImage(replyTarget, { url: item.thumbnail }, { content })
+      } catch (error) {
+        console.warn(`QQ 商品图片上传失败，改为文字推送：${this.targetName(target)} (${error instanceof Error ? error.message : String(error)})`)
+        await client.sendText(replyTarget, content)
+      }
+    }))
+    return this.summarizeOutcomes(outcomes, targets)
   }
 
   async sendTest(settings: AppSettings, item?: MercariItem): Promise<QQDeliveryResult> {
@@ -66,26 +84,41 @@ export class QQBotNotifier {
   }
 
   private formatItem(item: MercariItem, settings: AppSettings): string {
-    const lines = [`【发现上新】${item.keyword}`]
-    if (settings.notificationIncludeName) lines.push(`商品：${item.name}`)
-    if (settings.notificationIncludePrice) lines.push(`价格：¥${item.price.toLocaleString('ja-JP')}`)
-    lines.push(`链接：${item.url}`)
-    return lines.join('\n')
+    void settings
+    return [
+      `【发现上新】${item.keyword}`,
+      `商品：${item.name}`,
+      `价格：¥${item.price.toLocaleString('ja-JP')}`,
+      `链接：${item.url}`
+    ].join('\n')
   }
 
   private async sendText(content: string, settings: AppSettings): Promise<QQDeliveryResult> {
     if (!settings.qqBotEnabled) throw new Error('请先开启 QQ 机器人推送')
-    const targets = settings.qqBotTargets.filter((target) => target.enabled && target.targetId.trim())
-    if (!targets.length) throw new Error('请至少添加一个启用的 QQ 推送目标')
+    const targets = this.enabledTargets(settings)
     const secret = await this.requireSecret(settings)
     const client = this.getClient(settings.qqBotAppId, secret)
     const outcomes = await Promise.allSettled(targets.map((target) => client.sendText({
       scope: target.type,
       targetId: target.targetId.trim()
     }, content)))
+    return this.summarizeOutcomes(outcomes, targets)
+  }
+
+  private enabledTargets(settings: AppSettings): QQBotTarget[] {
+    const targets = settings.qqBotTargets.filter((target) => target.enabled && target.targetId.trim())
+    if (!targets.length) throw new Error('请至少添加一个启用的 QQ 推送目标')
+    return targets
+  }
+
+  private summarizeOutcomes(outcomes: PromiseSettledResult<unknown>[], targets: QQBotTarget[]): QQDeliveryResult {
     const failedTargets = outcomes.flatMap((outcome, index) => outcome.status === 'rejected' ? [targets[index]] : [])
     for (const target of failedTargets) console.warn(`QQ 推送失败：${this.targetName(target)}`)
     return { delivered: outcomes.length - failedTargets.length, failed: failedTargets.length }
+  }
+
+  private isProductImageUrl(url: string | undefined): url is string {
+    return Boolean(url && url.startsWith('https://static.mercdn.net/'))
   }
 
   private getClient(appId: string, secret: string): QQBot {
