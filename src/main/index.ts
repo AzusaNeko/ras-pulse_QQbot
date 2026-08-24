@@ -265,6 +265,7 @@ function registerIpc(): void {
     const snapshot = engine.snapshot()
     return qqNotifier.sendTest(snapshot.settings, snapshot.recentItems[0])
   })
+  ipcMain.handle('qqbot:sync-command-panels', async () => qqNotifier.syncCommandPanels(engine.snapshot().settings))
   ipcMain.handle('settings:update', (_event, patch: Partial<AppSettings>) => engine.updateSettings(patch))
   ipcMain.handle('shell:open-external', async (_event, url: string) => {
     const parsed = new URL(url)

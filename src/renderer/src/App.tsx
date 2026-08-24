@@ -121,10 +121,11 @@ function AddMonitor({ defaultInterval, onAdd }: { defaultInterval: number; onAdd
   )
 }
 
-function QQBotPanel({ config, onSave, onTest }: {
+function QQBotPanel({ config, onSave, onTest, onSyncPanels }: {
   config: QQBotConfig
   onSave: (value: { enabled: boolean; appId: string; targets: QQBotTarget[]; appSecret?: string }) => Promise<void>
   onTest: () => Promise<void>
+  onSyncPanels: () => Promise<void>
 }): JSX.Element {
   const [enabled, setEnabled] = useState(config.enabled)
   const [appId, setAppId] = useState(config.appId)
@@ -168,7 +169,7 @@ function QQBotPanel({ config, onSave, onTest }: {
       {!targets.length && <div className="qq-empty">保存开启后，私聊机器人或在群内 @ 机器人一次，软件会自动发现并添加对应目标。</div>}
     </div>
     <p className="qq-command-hint">机器人指令：<code>添加关键词 相机</code>、<code>添加关键词 バンドリ 屏蔽 バンドリエール、バンドリング</code>、<code>移除关键词 相机</code>、<code>关键词列表</code>。屏蔽词仅作用于该私聊或群聊。</p>
-    <div className="qq-actions"><button className="secondary-button" type="button" disabled={busy} onClick={() => void save()}>{busy ? '保存中…' : '保存 QQ 配置'}</button><button className="secondary-button" type="button" disabled={busy} onClick={() => void onTest()}>发送 QQ 测试消息</button></div>
+    <div className="qq-actions"><button className="secondary-button" type="button" disabled={busy} onClick={() => void save()}>{busy ? '保存中…' : '保存 QQ 配置'}</button><button className="secondary-button" type="button" disabled={busy} onClick={() => void onSyncPanels()}>同步 QQ 指令面板</button><button className="secondary-button" type="button" disabled={busy} onClick={() => void onTest()}>发送 QQ 测试消息</button></div>
   </section>
 }
 
@@ -292,6 +293,11 @@ export function App(): JSX.Element {
             try {
               const result = await window.mercariPulse.testQQBot()
               setNotice(result.failed ? `QQ 测试完成：成功 ${result.delivered}，失败 ${result.failed}` : `QQ 测试消息已发送至 ${result.delivered} 个目标`)
+            } catch (error) { setNotice(error instanceof Error ? error.message : String(error)) }
+          }} onSyncPanels={async () => {
+            try {
+              const result = await window.mercariPulse.syncQQCommandPanels()
+              setNotice(`QQ 指令面板已同步：新建 ${result.created} 个，更新 ${result.updated} 个`)
             } catch (error) { setNotice(error instanceof Error ? error.message : String(error)) }
           }} />}
           <div className="notice-box"><b>关于 1 秒延迟</b><p>应用每约 1 秒发起一次检查，但最终发现延迟还取决于 Mercari 搜索索引更新时间、网络 RTT 和接口限流。失败时会自动退避，恢复后回到设定间隔。</p></div>

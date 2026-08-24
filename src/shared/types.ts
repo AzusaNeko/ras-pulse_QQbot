@@ -70,6 +70,11 @@ export interface QQBotConfig {
   secretConfigured: boolean
 }
 
+export interface QQCommandPanelSyncResult {
+  created: number
+  updated: number
+}
+
 export interface SaveQQBotConfigInput {
   enabled: boolean
   appId: string
@@ -112,6 +117,7 @@ export interface MercariPulseApi {
   getQQBotConfig(): Promise<QQBotConfig>
   saveQQBotConfig(input: SaveQQBotConfigInput): Promise<QQBotConfig>
   testQQBot(): Promise<{ delivered: number; failed: number }>
+  syncQQCommandPanels(): Promise<QQCommandPanelSyncResult>
   openExternal(url: string): Promise<void>
   onMonitorEvent(listener: (event: MonitorEvent) => void): () => void
 }

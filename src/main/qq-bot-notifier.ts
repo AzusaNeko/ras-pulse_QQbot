@@ -7,6 +7,16 @@ export interface QQDeliveryResult {
   failed: number
 }
 
+interface QQPanelRecord {
+  panel_id: string
+  target_type: string
+  panel?: { remark?: string }
+}
+
+interface QQPanelListResponse {
+  records?: QQPanelRecord[]
+}
+
 export class QQBotNotifier {
   private client: QQBot | null = null
   private clientKey = ''
@@ -116,6 +126,36 @@ export class QQBotNotifier {
       ? `【测试推送】\n${this.formatItem(item, settings)}`
       : '【Ras Pulse 测试推送】\nQQ 机器人连接正常。后续检测到日本二手商品上新时，会在这里提醒你。'
     return this.sendText(content, settings)
+  }
+
+  /** Creates or updates the two global command panels shown in QQ chats. */
+  async syncCommandPanels(settings: AppSettings): Promise<{ created: number; updated: number }> {
+    const secret = await this.requireSecret(settings)
+    const client = this.getClient(settings.qqBotAppId, secret)
+    const panel = {
+      items: [
+        { type: 'command', name: '添加关键词 ', desc: '输入想监控的关键词' },
+        { type: 'command', name: '添加并屏蔽 ', desc: '关键词 屏蔽 排除词' },
+        { type: 'command', name: '移除关键词 ', desc: '停止接收某个关键词' },
+        { type: 'command', name: '关键词列表', desc: '查看我的订阅' },
+        { type: 'command', name: '帮助', desc: '查看使用说明' }
+      ],
+      remark: 'ras-pulse-command-panel-v1'
+    }
+    let created = 0
+    let updated = 0
+    for (const scope of ['c2c', 'group'] as const) {
+      const response = await client.api.get<QQPanelListResponse>('/v2/panels', { scope, limit: 50 })
+      const existing = response.records?.find((record) => record.target_type === 'all' && record.panel?.remark === panel.remark)
+      if (existing) {
+        await client.api.put(`/v2/panels/${encodeURIComponent(existing.panel_id)}`, { panel })
+        updated += 1
+      } else {
+        await client.api.post('/v2/panels', { scope, target_type: 'all', panel })
+        created += 1
+      }
+    }
+    return { created, updated }
   }
 
   private formatItem(item: MercariItem, settings: AppSettings): string {
