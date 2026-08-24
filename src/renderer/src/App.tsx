@@ -45,8 +45,9 @@ function ItemCard({ item, favorite, onFavorite, onDelete }: { item: MercariItem;
   )
 }
 
-function SubscriptionCard({ item, onChange, onDelete, onCheck }: {
+function SubscriptionCard({ item, fastTaken, onChange, onDelete, onCheck }: {
   item: Subscription
+  fastTaken: boolean
   onChange: (id: string, patch: Partial<Subscription>) => void
   onDelete: (id: string) => void
   onCheck: (id: string) => void
@@ -61,7 +62,7 @@ function SubscriptionCard({ item, onChange, onDelete, onCheck }: {
             {item.excludeKeyword && `排除：${item.excludeKeyword} · `}
             {item.minPrice != null || item.maxPrice != null
               ? `${item.minPrice ? price(item.minPrice) : '不限'} — ${item.maxPrice ? price(item.maxPrice) : '不限'} · ` : ''}
-            首次 {item.initialDisplayCount ?? 2} 条 · 每 <select className="inline-interval" value={item.intervalMs} onChange={(event) => onChange(item.id, { intervalMs: Number(event.target.value) })}><option value="500">0.5 秒（极速）</option><option value="1000">1 秒</option><option value="2000">2 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option></select>
+            首次 {item.initialDisplayCount ?? 2} 条 · 每 <select className="inline-interval" value={item.intervalMs} onChange={(event) => onChange(item.id, { intervalMs: Number(event.target.value) })}><option value="500" disabled={item.intervalMs > 500 && fastTaken}>0.5 秒（极速）</option><option value="1000">1 秒</option><option value="2000">2 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option></select>
           </p>
           <small title={item.error}>{item.error ? item.error : `上次成功：${timeAgo(item.lastSuccessAt)}`}</small>
         </div>
@@ -263,6 +264,7 @@ export function App(): JSX.Element {
             <div className="section-heading"><div><h2>监控任务</h2><span>{snapshot.subscriptions.length} 个关键词</span></div></div>
             <div className="subscription-grid">
               {snapshot.subscriptions.map((item) => <SubscriptionCard key={item.id} item={item}
+                fastTaken={snapshot.subscriptions.some((other) => other.id !== item.id && other.intervalMs <= 500)}
                 onChange={(id, patch) => void action(window.mercariPulse.updateSubscription(id, patch))}
                 onCheck={(id) => void action(window.mercariPulse.checkNow(id))}
                 onDelete={(id) => {

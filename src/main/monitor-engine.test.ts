@@ -89,4 +89,13 @@ describe('MonitorEngine baseline', () => {
     expect(engine.snapshot().recentItems.some((value) => value.id === 'm-broken')).toBe(false)
     engine.stop()
   })
+
+  it('allows only one fast polling subscription', async () => {
+    const engine = new MonitorEngine(new FakeSource(), new MemoryStore())
+    await engine.start()
+    await engine.add({ keyword: '关键词一', intervalMs: 500 })
+    await expect(engine.add({ keyword: '关键词二', intervalMs: 500 })).rejects.toThrow('极速模式只允许一个关键词使用')
+    await expect(engine.add({ keyword: '关键词二', intervalMs: 1_000 })).resolves.toBeDefined()
+    engine.stop()
+  })
 })

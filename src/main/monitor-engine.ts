@@ -5,6 +5,7 @@ import type { ItemDetailSource, ItemImageValidator, ItemSource } from './mercari
 import type { PersistedState, StateStore } from './store'
 
 const MIN_INTERVAL_MS = 500
+const FAST_INTERVAL_MS = 500
 const MAX_RECENT_ITEMS = 200
 const MAX_SEEN_IDS = 500
 const STALLED_CHECK_GRACE_MS = 15_000
@@ -69,6 +70,8 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     if (this.state.subscriptions.some((item) => item.keyword.toLowerCase() === keyword.toLowerCase())) {
       throw new Error('该关键词已在监控中')
     }
+    const intervalMs = Math.max(MIN_INTERVAL_MS, input.intervalMs ?? this.state.settings.defaultIntervalMs)
+    this.ensureFastSlot(intervalMs)
     const subscription: Subscription = {
       id: randomUUID(),
       keyword,
@@ -77,7 +80,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       maxPrice: input.maxPrice,
       initialDisplayCount: clampInitialDisplayCount(input.initialDisplayCount),
       enabled: true,
-      intervalMs: Math.max(MIN_INTERVAL_MS, input.intervalMs ?? this.state.settings.defaultIntervalMs),
+      intervalMs,
       createdAt: Date.now(),
       status: 'watching',
       consecutiveErrors: 0
@@ -90,9 +93,11 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
 
   async update(id: string, patch: Partial<Subscription>): Promise<AppSnapshot> {
     const subscription = this.requireSubscription(id)
+    const intervalMs = Math.max(MIN_INTERVAL_MS, patch.intervalMs ?? subscription.intervalMs)
+    this.ensureFastSlot(intervalMs, id)
     Object.assign(subscription, patch, {
       id,
-      intervalMs: Math.max(MIN_INTERVAL_MS, patch.intervalMs ?? subscription.intervalMs)
+      intervalMs
     })
     await this.persistAndEmit()
     this.schedule(id, 20)
@@ -259,6 +264,13 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     const subscription = this.state.subscriptions.find((item) => item.id === id)
     if (!subscription) throw new Error('找不到该监控任务')
     return subscription
+  }
+
+  private ensureFastSlot(intervalMs: number, currentId?: string): void {
+    if (intervalMs > FAST_INTERVAL_MS) return
+    if (this.state.subscriptions.some((subscription) => subscription.id !== currentId && subscription.intervalMs <= FAST_INTERVAL_MS)) {
+      throw new Error('极速模式只允许一个关键词使用。请先将其他关键词切换到 1 秒或更慢。')
+    }
   }
 
   private async persistAndEmit(): Promise<void> {
