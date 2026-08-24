@@ -7,6 +7,7 @@ import type { PersistedState, StateStore } from './store'
 const MIN_INTERVAL_MS = 1_000
 const MAX_RECENT_ITEMS = 200
 const MAX_SEEN_IDS = 500
+const STALLED_CHECK_GRACE_MS = 15_000
 
 function clampInitialDisplayCount(value?: number): number {
   return Math.min(5, Math.max(1, Math.trunc(value ?? 2)))
@@ -21,6 +22,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
   private state!: PersistedState
   private readonly timers = new Map<string, NodeJS.Timeout>()
   private readonly running = new Set<string>()
+  private healthTimer: NodeJS.Timeout | undefined
   private startedAt = Date.now()
 
   constructor(
@@ -32,12 +34,16 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     this.state = await this.store.load()
     this.startedAt = Date.now()
     for (const subscription of this.state.subscriptions) this.schedule(subscription.id, 120)
+    this.healthTimer = setInterval(() => this.recoverStalledSubscriptions(), 5_000)
+    this.healthTimer.unref()
     this.emitSnapshot()
   }
 
   stop(): void {
     for (const timer of this.timers.values()) clearTimeout(timer)
     this.timers.clear()
+    if (this.healthTimer) clearInterval(this.healthTimer)
+    this.healthTimer = undefined
   }
 
   snapshot(): AppSnapshot {
@@ -170,6 +176,19 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       this.running.delete(id)
       await this.persistAndEmit()
       this.schedule(id)
+    }
+  }
+
+  /** Restarts only tasks that look healthy but have silently lost their timer. */
+  private recoverStalledSubscriptions(): void {
+    const now = Date.now()
+    for (const subscription of this.state.subscriptions) {
+      if (!subscription.enabled || subscription.status !== 'watching' || this.running.has(subscription.id)) continue
+      const grace = Math.max(STALLED_CHECK_GRACE_MS, subscription.intervalMs * 3)
+      if (subscription.lastCheckedAt && now - subscription.lastCheckedAt > grace) {
+        console.warn(`监控任务长时间未检查，正在恢复定时器：${subscription.keyword}`)
+        this.schedule(subscription.id, 0)
+      }
     }
   }
 
