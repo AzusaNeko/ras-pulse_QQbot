@@ -100,6 +100,14 @@ export interface QQCommandPanelSyncResult {
   menuUpdated: boolean
 }
 
+export interface LicenseStatus {
+  active: boolean
+  deviceId: string
+  holder?: string
+  expiresAt?: number
+  error?: string
+}
+
 export interface SaveQQBotConfigInput {
   enabled: boolean
   appId: string
@@ -133,6 +141,8 @@ export interface MonitorEvent {
 }
 
 export interface MercariPulseApi {
+  getLicenseStatus(): Promise<LicenseStatus>
+  activateLicense(licenseKey: string): Promise<LicenseStatus>
   getSnapshot(): Promise<AppSnapshot>
   addSubscription(input: NewSubscription): Promise<AppSnapshot>
   updateSubscription(id: string, patch: Partial<Subscription>): Promise<AppSnapshot>

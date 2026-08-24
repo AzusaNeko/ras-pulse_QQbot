@@ -1,7 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AppSettings, MercariItem, MonitorEvent, NewSubscription, QQCommandPanelSyncResult, SaveQQBotConfigInput, Subscription } from '../shared/types'
+import type { AppSettings, LicenseStatus, MercariItem, MonitorEvent, NewSubscription, QQCommandPanelSyncResult, SaveQQBotConfigInput, Subscription } from '../shared/types'
 
 contextBridge.exposeInMainWorld('mercariPulse', {
+  getLicenseStatus: (): Promise<LicenseStatus> => ipcRenderer.invoke('license:status'),
+  activateLicense: (licenseKey: string): Promise<LicenseStatus> => ipcRenderer.invoke('license:activate', licenseKey),
   getSnapshot: () => ipcRenderer.invoke('monitor:snapshot'),
   addSubscription: (input: NewSubscription) => ipcRenderer.invoke('monitor:add', input),
   updateSubscription: (id: string, patch: Partial<Subscription>) => ipcRenderer.invoke('monitor:update', id, patch),

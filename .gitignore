@@ -1,8 +1,8 @@
 node_modules/
+license-admin/
 out/
 dist/
 release/
 *.log
 .DS_Store
 Thumbs.db
-
