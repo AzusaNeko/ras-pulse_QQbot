@@ -41,7 +41,7 @@ npm run dist
 
 ## QQ 机器人配置
 
-在“偏好设置 → QQ 机器人推送”中填写 QQ 开放平台的 AppID 与 AppSecret，再添加推送目标。普通 QQ 群使用 `group_openid`，QQ 私聊使用 `openid`；两者都不是 QQ 号或群号，需由机器人收到对应消息事件后获取。
+在“偏好设置 → QQ 机器人推送”中填写 QQ 开放平台的 AppID 与 AppSecret。保存并开启后，应用会建立 QQ WebSocket 服务；在目标群内 @ 机器人或私聊机器人一次，软件会自动发现并添加对应推送目标。普通 QQ 群使用 `group_openid`，QQ 私聊使用 `openid`；两者都不是 QQ 号或群号。
 
 AppSecret 仅保存在本机，并使用 Windows DPAPI 加密；不会显示在界面、写入日志或提交到 Git 仓库。请先点击“发送 QQ 测试消息”验证配置。QQ 平台可能对主动消息设置频率或会话限制，请以平台实际返回结果为准。
 

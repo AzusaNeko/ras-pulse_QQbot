@@ -10,8 +10,48 @@ export interface QQDeliveryResult {
 export class QQBotNotifier {
   private client: QQBot | null = null
   private clientKey = ''
+  private receivingKey = ''
 
-  constructor(private readonly secrets: SecretStore) {}
+  constructor(
+    private readonly secrets: SecretStore,
+    private readonly onTargetDiscovered: (target: QQBotTarget) => Promise<void>
+  ) {}
+
+  /** Starts the WebSocket gateway so QQ reports the bot as connected and targets can be discovered. */
+  async connect(settings: AppSettings): Promise<void> {
+    if (!settings.qqBotEnabled) {
+      this.stop()
+      return
+    }
+    const secret = await this.requireSecret(settings)
+    const key = `${settings.qqBotAppId}\u0000${secret}`
+    if (this.receivingKey === key) return
+    this.stop()
+    const client = this.getClient(settings.qqBotAppId, secret)
+    this.receivingKey = key
+    client.on('ready', () => console.info('QQ 机器人服务已连接'))
+    client.on('error', (error) => console.error(`QQ 机器人服务异常：${error.message}`))
+    client.on('message', async (_context, message) => {
+      const target = message.replyTarget
+      if (target.scope !== 'c2c' && target.scope !== 'group') return
+      await this.onTargetDiscovered({
+        id: `${target.scope}:${target.targetId}`,
+        type: target.scope,
+        targetId: target.targetId,
+        label: target.scope === 'group' ? '自动发现的 QQ 群' : '自动发现的 QQ 私聊',
+        enabled: true
+      })
+    })
+    void client.start().catch((error) => {
+      if (this.receivingKey === key) this.receivingKey = ''
+      console.error(`QQ 机器人连接失败：${error instanceof Error ? error.message : String(error)}`)
+    })
+  }
+
+  stop(): void {
+    this.client?.stop()
+    this.receivingKey = ''
+  }
 
   async sendItem(item: MercariItem, settings: AppSettings): Promise<QQDeliveryResult> {
     const content = this.formatItem(item, settings)
@@ -35,11 +75,9 @@ export class QQBotNotifier {
 
   private async sendText(content: string, settings: AppSettings): Promise<QQDeliveryResult> {
     if (!settings.qqBotEnabled) throw new Error('请先开启 QQ 机器人推送')
-    if (!settings.qqBotAppId.trim()) throw new Error('请填写 QQ AppID')
     const targets = settings.qqBotTargets.filter((target) => target.enabled && target.targetId.trim())
     if (!targets.length) throw new Error('请至少添加一个启用的 QQ 推送目标')
-    const secret = await this.secrets.get()
-    if (!secret) throw new Error('请填写并保存 QQ AppSecret')
+    const secret = await this.requireSecret(settings)
     const client = this.getClient(settings.qqBotAppId, secret)
     const outcomes = await Promise.allSettled(targets.map((target) => client.sendText({
       scope: target.type,
@@ -57,6 +95,13 @@ export class QQBotNotifier {
       this.clientKey = key
     }
     return this.client
+  }
+
+  private async requireSecret(settings: AppSettings): Promise<string> {
+    if (!settings.qqBotAppId.trim()) throw new Error('请填写 QQ AppID')
+    const secret = await this.secrets.get()
+    if (!secret) throw new Error('请填写并保存 QQ AppSecret')
+    return secret
   }
 
   private targetName(target: QQBotTarget): string {

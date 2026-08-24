@@ -258,6 +258,7 @@ function registerIpc(): void {
       qqBotAppId: appId,
       qqBotTargets: targets
     })
+    await qqNotifier.connect(engine.snapshot().settings)
     return { enabled: Boolean(input.enabled), appId, targets, secretConfigured: await secretStore.has() }
   })
   ipcMain.handle('qqbot:test', async () => {
@@ -277,9 +278,14 @@ function registerIpc(): void {
 app.whenReady().then(async () => {
   const userData = app.getPath('userData')
   secretStore = new SecretStore(join(userData, 'qqbot-secret.dat'))
-  qqNotifier = new QQBotNotifier(secretStore)
   engine = new MonitorEngine(new MercariClient(), new JsonStore(join(userData, 'state.json')))
   await engine.start()
+  qqNotifier = new QQBotNotifier(secretStore, async (target) => {
+    const settings = engine.snapshot().settings
+    if (settings.qqBotTargets.some((existing) => existing.id === target.id)) return
+    await engine.updateSettings({ qqBotTargets: [...settings.qqBotTargets, target] })
+    console.info(`已自动发现 QQ 推送目标：${target.type}:${target.targetId}`)
+  })
   engine.on('snapshot', (snapshot) => broadcast({ type: 'snapshot', snapshot }))
   engine.on('newItem', (item) => {
     broadcast({ type: 'new-item', item })
@@ -294,6 +300,9 @@ app.whenReady().then(async () => {
     }
   })
   registerIpc()
+  if (engine.snapshot().settings.qqBotEnabled) {
+    void qqNotifier.connect(engine.snapshot().settings).catch((error) => console.error(`QQ 机器人自动连接失败：${error instanceof Error ? error.message : String(error)}`))
+  }
   createWindow()
   createTray()
 
@@ -303,6 +312,7 @@ app.whenReady().then(async () => {
 app.on('before-quit', () => {
   quitting = true
   engine?.stop()
+  qqNotifier?.stop()
 })
 
 app.on('window-all-closed', () => {

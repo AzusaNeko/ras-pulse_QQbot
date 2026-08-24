@@ -156,7 +156,7 @@ function QQBotPanel({ config, onSave, onTest }: {
         <input value={target.targetId} onChange={(event) => changeTarget(target.id, { targetId: event.target.value })} placeholder={target.type === 'group' ? 'group_openid' : 'openid'} />
         <button className="icon-button danger" type="button" title="移除目标" onClick={() => setTargets((items) => items.filter((item) => item.id !== target.id))}>×</button>
       </div>)}
-      {!targets.length && <div className="qq-empty">暂未添加目标。请先在 QQ 中 @ 机器人或私聊机器人，以取得对应的 openid。</div>}
+      {!targets.length && <div className="qq-empty">保存开启后，私聊机器人或在群内 @ 机器人一次，软件会自动发现并添加对应目标。</div>}
     </div>
     <div className="qq-actions"><button className="secondary-button" type="button" disabled={busy} onClick={() => void save()}>{busy ? '保存中…' : '保存 QQ 配置'}</button><button className="secondary-button" type="button" disabled={busy} onClick={() => void onTest()}>发送 QQ 测试消息</button></div>
   </section>
@@ -179,7 +179,15 @@ export function App(): JSX.Element {
       .then(([nextSnapshot, nextQQConfig]) => { setSnapshot(nextSnapshot); setQQConfig(nextQQConfig) })
       .catch((error) => setBootError(String(error)))
     return window.mercariPulse.onMonitorEvent((event) => {
-      if (event.snapshot) setSnapshot(event.snapshot)
+      if (event.snapshot) {
+        setSnapshot(event.snapshot)
+        setQQConfig((current) => current ? {
+          ...current,
+          enabled: event.snapshot!.settings.qqBotEnabled,
+          appId: event.snapshot!.settings.qqBotAppId,
+          targets: event.snapshot!.settings.qqBotTargets
+        } : current)
+      }
       if (event.item) setNotice(`发现上新：${event.item.name}`)
     })
   }, [])
