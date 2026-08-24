@@ -145,8 +145,6 @@ export class QQBotNotifier {
     await client.api.put('/v2/menu', {
       menu: {
         items: [
-          { type: 'send_message', name: '添加关键词', send_message: '/添加关键词 ' },
-          { type: 'send_message', name: '添加并屏蔽', send_message: '/添加关键词 ' },
           {
             type: 'menu', name: '监控管理', sub_menu_items: [
               { type: 'send_message', name: '移除关键词', send_message: '/移除关键词 ' },
