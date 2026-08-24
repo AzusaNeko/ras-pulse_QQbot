@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import type { AppSnapshot, AppSettings, MercariItem, NewSubscription, Subscription } from '../shared/types'
-import type { ItemSource } from './mercari-client'
+import type { ItemImageValidator, ItemSource } from './mercari-client'
 import type { PersistedState, StateStore } from './store'
 
 const MIN_INTERVAL_MS = 1_000
@@ -145,15 +145,16 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       subscription.error = undefined
 
       if (prior) {
-        for (const item of items.filter((candidate) => !seen.has(candidate.id)).reverse()) {
+        const newItems = await this.withAccessibleImages(items.filter((candidate) => !seen.has(candidate.id)))
+        for (const item of newItems.reverse()) {
           item.discoveryType = 'new'
           this.state.recentItems = [item, ...this.state.recentItems.filter((old) => old.id !== item.id)]
             .slice(0, MAX_RECENT_ITEMS)
           this.emit('newItem', item)
         }
       } else {
-        const baselineItems = items
-          .slice(0, clampInitialDisplayCount(subscription.initialDisplayCount))
+        const baselineItems = (await this.withAccessibleImages(items
+          .slice(0, clampInitialDisplayCount(subscription.initialDisplayCount))))
           .map((item) => ({ ...item, discoveryType: 'baseline' as const }))
         const baselineIds = new Set(baselineItems.map((item) => item.id))
         this.state.recentItems = [
@@ -170,6 +171,13 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       await this.persistAndEmit()
       this.schedule(id)
     }
+  }
+
+  private async withAccessibleImages(items: MercariItem[]): Promise<MercariItem[]> {
+    const validator = this.source as ItemSource & Partial<ItemImageValidator>
+    if (!validator.isImageAccessible) return items
+    const outcomes = await Promise.all(items.map(async (item) => ({ item, accessible: await validator.isImageAccessible!(item) })))
+    return outcomes.flatMap((outcome) => outcome.accessible ? [outcome.item] : [])
   }
 
   private requireSubscription(id: string): Subscription {

@@ -20,6 +20,11 @@ export interface ItemSource {
   search(subscription: Subscription): Promise<MercariItem[]>
 }
 
+/** Optional capability for sources that can verify a listing thumbnail before it is surfaced. */
+export interface ItemImageValidator {
+  isImageAccessible(item: MercariItem): Promise<boolean>
+}
+
 function base64urlJson(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString('base64url')
 }
@@ -131,6 +136,24 @@ export class MercariClient implements ItemSource {
         console.error(JSON.stringify(payload).slice(0, 2_000))
       }
       return parseSearchResponse(payload, subscription)
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
+
+  async isImageAccessible(item: MercariItem): Promise<boolean> {
+    if (!item.thumbnail.startsWith('https://static.mercdn.net/')) return false
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 2_500)
+    try {
+      const response = await fetch(item.thumbnail, {
+        signal: controller.signal,
+        headers: { range: 'bytes=0-0' }
+      })
+      const type = response.headers.get('content-type') ?? ''
+      return response.ok && (!type || type.startsWith('image/'))
+    } catch {
+      return false
     } finally {
       clearTimeout(timeout)
     }

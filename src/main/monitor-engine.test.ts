@@ -12,9 +12,11 @@ class MemoryStore implements StateStore {
 
 class FakeSource implements ItemSource {
   items: MercariItem[] = []
+  inaccessible = new Set<string>()
   async search(subscription: Subscription): Promise<MercariItem[]> {
     return structuredClone(this.items).map((value) => ({ ...value, subscriptionId: subscription.id }))
   }
+  async isImageAccessible(item: MercariItem): Promise<boolean> { return !this.inaccessible.has(item.id) }
 }
 
 function item(id: string): MercariItem {
@@ -71,6 +73,20 @@ describe('MonitorEngine baseline', () => {
     expect(engine.snapshot().recentItems).toHaveLength(2)
     await engine.remove(subscriptionId, true)
     expect(engine.snapshot().recentItems).toHaveLength(0)
+    engine.stop()
+  })
+
+  it('ignores new items whose product image cannot be accessed', async () => {
+    const source = new FakeSource()
+    source.items = [item('m1')]
+    const engine = new MonitorEngine(source, new MemoryStore())
+    await engine.start()
+    const snapshot = await engine.add({ keyword: '相机', initialDisplayCount: 2 })
+    await engine.checkNow(snapshot.subscriptions[0].id)
+    source.items = [item('m-broken'), ...source.items]
+    source.inaccessible.add('m-broken')
+    await engine.checkNow(snapshot.subscriptions[0].id)
+    expect(engine.snapshot().recentItems.some((value) => value.id === 'm-broken')).toBe(false)
     engine.stop()
   })
 })
