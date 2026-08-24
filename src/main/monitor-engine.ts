@@ -6,7 +6,10 @@ import type { PersistedState, StateStore } from './store'
 
 const MIN_INTERVAL_MS = 500
 const FAST_INTERVAL_MS = 500
-const MAX_RECENT_ITEMS = 200
+/** At most this many activity records are retained for one monitored keyword. */
+const MAX_RECENT_ITEMS_PER_KEYWORD = 200
+/** Absolute cap across all monitored keywords. */
+const MAX_RECENT_ITEMS = 300
 const MAX_SEEN_IDS = 500
 const STALLED_CHECK_GRACE_MS = 15_000
 
@@ -36,6 +39,11 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
 
   async start(): Promise<void> {
     this.state = await this.store.load()
+    const retained = this.retainRecentItems(this.state.recentItems)
+    if (retained.length !== this.state.recentItems.length) {
+      this.state.recentItems = retained
+      await this.store.save(this.state)
+    }
     this.startedAt = Date.now()
     for (const subscription of this.state.subscriptions) this.schedule(subscription.id, 120)
     this.healthTimer = setInterval(() => this.recoverStalledSubscriptions(), 5_000)
@@ -184,8 +192,10 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
         const newItems = await this.withAccessibleImages(items.filter((candidate) => !seen.has(candidate.id)))
         for (const item of newItems.reverse()) {
           item.discoveryType = 'new'
-          this.state.recentItems = [item, ...this.state.recentItems.filter((old) => old.id !== item.id)]
-            .slice(0, MAX_RECENT_ITEMS)
+          this.state.recentItems = this.retainRecentItems([
+            item,
+            ...this.state.recentItems.filter((old) => !(old.subscriptionId === item.subscriptionId && old.id === item.id))
+          ])
           this.emit('newItem', item)
         }
       } else {
@@ -193,10 +203,10 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
           .slice(0, clampInitialDisplayCount(subscription.initialDisplayCount))))
           .map((item) => ({ ...item, discoveryType: 'baseline' as const }))
         const baselineIds = new Set(baselineItems.map((item) => item.id))
-        this.state.recentItems = [
+        this.state.recentItems = this.retainRecentItems([
           ...baselineItems,
-          ...this.state.recentItems.filter((old) => !baselineIds.has(old.id))
-        ].slice(0, MAX_RECENT_ITEMS)
+          ...this.state.recentItems.filter((old) => !(old.subscriptionId === subscription.id && baselineIds.has(old.id)))
+        ])
       }
     } catch (error) {
       subscription.consecutiveErrors += 1
@@ -254,6 +264,38 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       }
       await this.persistAndEmit()
     } finally { this.favoritesRunning = false }
+  }
+
+  /**
+   * Keeps the newest records first. Per-keyword trimming happens before the
+   * global cap. At the global cap, the oldest record from a keyword with more
+   * than one retained item is reclaimed first, so a keyword's sole remaining
+   * item is preserved whenever that is compatible with the 300-item cap.
+   */
+  private retainRecentItems(items: MercariItem[]): MercariItem[] {
+    const perKeyword = new Map<string, number>()
+    const retained = items.filter((item) => {
+      const count = perKeyword.get(item.subscriptionId) ?? 0
+      if (count >= MAX_RECENT_ITEMS_PER_KEYWORD) return false
+      perKeyword.set(item.subscriptionId, count + 1)
+      return true
+    })
+    const counts = new Map(perKeyword)
+    while (retained.length > MAX_RECENT_ITEMS) {
+      let removeIndex = -1
+      for (let index = retained.length - 1; index >= 0; index -= 1) {
+        if ((counts.get(retained[index].subscriptionId) ?? 0) > 1) {
+          removeIndex = index
+          break
+        }
+      }
+      // More than 300 keywords with one item each: honoring the absolute cap
+      // requires removing the oldest final item as a last resort.
+      if (removeIndex < 0) removeIndex = retained.length - 1
+      const [removed] = retained.splice(removeIndex, 1)
+      counts.set(removed.subscriptionId, (counts.get(removed.subscriptionId) ?? 1) - 1)
+    }
+    return retained
   }
 
   private async withAccessibleImages(items: MercariItem[]): Promise<MercariItem[]> {

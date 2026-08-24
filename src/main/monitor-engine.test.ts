@@ -99,4 +99,21 @@ describe('MonitorEngine baseline', () => {
     await expect(engine.add({ keyword: '关键词二', intervalMs: 1_000 })).resolves.toBeDefined()
     engine.stop()
   })
+
+  it('retains up to 200 records per keyword and preserves a keyword\'s final record during global cleanup', async () => {
+    const store = new MemoryStore()
+    const records = (subscriptionId: string, count: number): MercariItem[] => Array.from({ length: count }, (_, index) => ({
+      ...item(`${subscriptionId}-${index}`), subscriptionId, keyword: subscriptionId
+    }))
+    store.state.recentItems = [...records('keyword-a', 200), ...records('keyword-b', 100), ...records('keyword-c', 1)]
+    const engine = new MonitorEngine(new FakeSource(), store)
+    await engine.start()
+
+    const recent = engine.snapshot().recentItems
+    expect(recent).toHaveLength(300)
+    expect(recent.filter((value) => value.subscriptionId === 'keyword-a')).toHaveLength(200)
+    expect(recent.filter((value) => value.subscriptionId === 'keyword-b')).toHaveLength(99)
+    expect(recent.filter((value) => value.subscriptionId === 'keyword-c')).toHaveLength(1)
+    engine.stop()
+  })
 })
