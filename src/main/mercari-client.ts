@@ -10,6 +10,8 @@ interface ApiItem {
   thumbnails?: string[]
   status?: string
   created?: number | string
+  auction?: unknown
+  isAuction?: boolean
 }
 
 interface SearchResponse {
@@ -71,6 +73,7 @@ export function parseSearchResponse(
       thumbnail: item.thumbnails?.[0] ?? '',
       url: `https://jp.mercari.com/item/${encodeURIComponent(item.id)}`,
       status: item.status ?? 'ITEM_STATUS_UNSPECIFIED',
+      isAuction: Boolean(item.auction ?? item.isAuction),
       createdAt: item.created == null ? undefined : Number(item.created),
       detectedAt,
       subscriptionId: subscription.id,
@@ -183,6 +186,7 @@ export class MercariClient implements ItemSource {
         price: Number(detail.price),
         thumbnail: detail.thumbnails?.[0] ?? item.thumbnail,
         status: detail.status ?? item.status,
+        isAuction: Boolean(detail.auction ?? detail.isAuction),
         detectedAt: Date.now()
       }
     } finally {

@@ -27,6 +27,7 @@ function item(id: string): MercariItem {
     thumbnail: '',
     url: `https://jp.mercari.com/item/${id}`,
     status: 'ITEM_STATUS_ON_SALE',
+    isAuction: false,
     detectedAt: Date.now(),
     subscriptionId: 'source-value',
     keyword: '相机'

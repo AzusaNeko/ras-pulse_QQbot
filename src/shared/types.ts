@@ -24,6 +24,7 @@ export interface MercariItem {
   thumbnail: string
   url: string
   status: string
+  isAuction: boolean
   createdAt?: number
   detectedAt: number
   subscriptionId: string
@@ -38,6 +39,7 @@ export interface FavoriteItem {
   thumbnail: string
   url: string
   status: string
+  isAuction: boolean
   addedAt: number
   lastCheckedAt?: number
   lastChangedAt?: number

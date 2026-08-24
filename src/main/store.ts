@@ -65,8 +65,8 @@ export class JsonStore implements StateStore {
           qqBotTargets: (parsed.settings?.qqBotTargets ?? []).map((target) => ({ ...target, keywords: normalizeQQKeywords(target.keywords) }))
         },
         subscriptions: parsed.subscriptions ?? [],
-        recentItems: parsed.recentItems ?? [],
-        favorites: parsed.favorites ?? [],
+        recentItems: (parsed.recentItems ?? []).map((item) => ({ ...item, isAuction: Boolean(item.isAuction) })),
+        favorites: (parsed.favorites ?? []).map((item) => ({ ...item, isAuction: Boolean(item.isAuction) })),
         seenBySubscription: parsed.seenBySubscription ?? {}
       }
     } catch (error) {

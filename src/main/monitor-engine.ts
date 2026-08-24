@@ -129,7 +129,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     if (this.state.favorites.some((favorite) => favorite.id === item.id)) return this.snapshot()
     this.state.favorites.unshift({
       id: item.id, name: item.name, price: item.price, thumbnail: item.thumbnail, url: item.url,
-      status: item.status, addedAt: Date.now(), lastCheckedAt: Date.now()
+      status: item.status, isAuction: item.isAuction, addedAt: Date.now(), lastCheckedAt: Date.now()
     })
     await this.persistAndEmit()
     void this.checkFavorites()
@@ -239,6 +239,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
           favorite.price = latest.price
           favorite.thumbnail = latest.thumbnail
           favorite.status = latest.status
+          favorite.isAuction = latest.isAuction
           favorite.error = undefined
           if (priceChanged || sold) {
             favorite.lastChangedAt = Date.now()

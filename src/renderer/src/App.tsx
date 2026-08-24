@@ -41,7 +41,7 @@ function ItemCard({ item, favorite, onFavorite, onDelete }: { item: MercariItem;
       <div className="item-copy">
         <div className="item-topline"><span className="keyword-pill">{item.keyword} · {item.discoveryType === 'baseline' ? '初始结果' : '上新'}</span><time>{timeAgo(item.detectedAt)}</time></div>
         <strong>{item.name}</strong>
-        <div className="item-bottom"><b>{price(item.price)}</b><span>打开商品 ↗</span></div>
+        <div className="item-bottom"><div><b>{price(item.price)}</b><i className={`sale-type ${item.isAuction ? 'auction' : ''}`}>{item.isAuction ? '拍卖商品' : '直售商品'}</i></div><span>打开商品 ↗</span></div>
       </div>
     </article>
   )
@@ -85,7 +85,7 @@ function FavoriteCard({ item, onRemove }: { item: FavoriteItem; onRemove: (id: s
   const sold = /SOLD|SOLD_OUT/i.test(item.status)
   return <article className={`favorite-card ${sold ? 'sold' : ''}`} onClick={() => void window.mercariPulse.openExternal(item.url)}>
     <img src={item.thumbnail} alt="" />
-    <div><span>{sold ? '已售出' : '收藏监控中'} · {item.lastCheckedAt ? timeAgo(item.lastCheckedAt) : '等待检查'}</span><strong>{item.name}</strong><b>{price(item.price)}</b>{item.error && <small>{item.error}</small>}</div>
+    <div><span>{sold ? '已售出' : '收藏监控中'} · {item.lastCheckedAt ? timeAgo(item.lastCheckedAt) : '等待检查'}</span><strong>{item.name}</strong><b>{price(item.price)} <i className={`sale-type ${item.isAuction ? 'auction' : ''}`}>{item.isAuction ? '拍卖' : '直售'}</i></b>{item.error && <small>{item.error}</small>}</div>
     <button className="icon-button danger" title="取消收藏" onClick={(event) => { event.stopPropagation(); onRemove(item.id) }}>×</button>
   </article>
 }
