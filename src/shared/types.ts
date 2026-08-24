@@ -73,6 +73,7 @@ export interface QQBotConfig {
 export interface QQCommandPanelSyncResult {
   created: number
   updated: number
+  menuUpdated: boolean
 }
 
 export interface SaveQQBotConfigInput {

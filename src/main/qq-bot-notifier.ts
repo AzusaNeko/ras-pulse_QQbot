@@ -128,8 +128,8 @@ export class QQBotNotifier {
     return this.sendText(content, settings)
   }
 
-  /** Creates or updates the two global command panels shown in QQ chats. */
-  async syncCommandPanels(settings: AppSettings): Promise<{ created: number; updated: number }> {
+  /** Creates or updates C2C's persistent menu and the C2C/group command panels. */
+  async syncCommandPanels(settings: AppSettings): Promise<{ created: number; updated: number; menuUpdated: boolean }> {
     const secret = await this.requireSecret(settings)
     const client = this.getClient(settings.qqBotAppId, secret)
     const panel = {
@@ -142,6 +142,21 @@ export class QQBotNotifier {
       ],
       remark: 'ras-pulse-command-panel-v1'
     }
+    await client.api.put('/v2/menu', {
+      menu: {
+        items: [
+          { type: 'send_message', name: '添加关键词', send_message: '添加关键词 ' },
+          { type: 'send_message', name: '添加并屏蔽', send_message: '添加关键词 ' },
+          {
+            type: 'menu', name: '监控管理', sub_menu_items: [
+              { type: 'send_message', name: '移除关键词', send_message: '移除关键词 ' },
+              { type: 'send_message', name: '关键词列表', send_message: '关键词列表' },
+              { type: 'send_message', name: '帮助', send_message: '帮助' }
+            ]
+          }
+        ]
+      }
+    })
     let created = 0
     let updated = 0
     for (const scope of ['c2c', 'group'] as const) {
@@ -155,7 +170,7 @@ export class QQBotNotifier {
         created += 1
       }
     }
-    return { created, updated }
+    return { created, updated, menuUpdated: true }
   }
 
   private formatItem(item: MercariItem, settings: AppSettings): string {
