@@ -31,8 +31,10 @@ function ItemCard({ item, favorite, onFavorite, onDelete }: { item: MercariItem;
   if (!item.thumbnail || imageStatus === 'failed') return null
   return (
     <article className={`item-card ${imageStatus === 'ready' ? '' : 'item-card-loading'}`} role="button" tabIndex={imageStatus === 'ready' ? 0 : -1} aria-hidden={imageStatus !== 'ready'} onClick={imageStatus === 'ready' ? openItem : undefined} onKeyDown={(event) => { if (imageStatus === 'ready' && event.key === 'Enter') openItem() }}>
-      <button className="item-delete" title="从商品动态中删除" aria-label="删除商品动态" onClick={(event) => { event.stopPropagation(); onDelete(item) }}>×</button>
-      <button className={`item-favorite ${favorite ? 'active' : ''}`} title={favorite ? '已收藏' : '收藏并监控状态'} aria-label="收藏商品" onClick={(event) => { event.stopPropagation(); onFavorite(item) }}>♥</button>
+      <div className="item-card-actions">
+        <button className={`item-favorite ${favorite ? 'active' : ''}`} title={favorite ? '已收藏' : '收藏并监控状态'} aria-label="收藏商品" onClick={(event) => { event.stopPropagation(); onFavorite(item) }}>♥</button>
+        <button className="item-delete" title="从商品动态中删除" aria-label="删除商品动态" onClick={(event) => { event.stopPropagation(); onDelete(item) }}>×</button>
+      </div>
       <div className="item-image-wrap">
         <img src={item.thumbnail} alt="" onLoad={() => setImageStatus('ready')} onError={() => setImageStatus('failed')} />
       </div>
