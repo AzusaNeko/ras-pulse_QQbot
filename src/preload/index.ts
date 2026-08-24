@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AppSettings, MonitorEvent, NewSubscription, Subscription } from '../shared/types'
+import type { AppSettings, MonitorEvent, NewSubscription, SaveQQBotConfigInput, Subscription } from '../shared/types'
 
 contextBridge.exposeInMainWorld('mercariPulse', {
   getSnapshot: () => ipcRenderer.invoke('monitor:snapshot'),
@@ -10,6 +10,9 @@ contextBridge.exposeInMainWorld('mercariPulse', {
   updateSettings: (patch: Partial<AppSettings>) => ipcRenderer.invoke('settings:update', patch),
   checkNow: (id: string) => ipcRenderer.invoke('monitor:check-now', id),
   testNotification: () => ipcRenderer.invoke('notifications:test'),
+  getQQBotConfig: () => ipcRenderer.invoke('qqbot:get-config'),
+  saveQQBotConfig: (input: SaveQQBotConfigInput) => ipcRenderer.invoke('qqbot:save-config', input),
+  testQQBot: () => ipcRenderer.invoke('qqbot:test'),
   openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url),
   onMonitorEvent: (listener: (event: MonitorEvent) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, value: MonitorEvent): void => listener(value)

@@ -39,6 +39,34 @@ export interface AppSettings {
   notificationIncludePrice: boolean
   launchMinimized: boolean
   defaultIntervalMs: number
+  qqBotEnabled: boolean
+  qqBotAppId: string
+  qqBotTargets: QQBotTarget[]
+}
+
+export type QQBotTargetType = 'group' | 'c2c'
+
+export interface QQBotTarget {
+  id: string
+  type: QQBotTargetType
+  targetId: string
+  label: string
+  enabled: boolean
+}
+
+export interface QQBotConfig {
+  enabled: boolean
+  appId: string
+  targets: QQBotTarget[]
+  secretConfigured: boolean
+}
+
+export interface SaveQQBotConfigInput {
+  enabled: boolean
+  appId: string
+  targets: QQBotTarget[]
+  /** Empty keeps the existing local secret. It is never returned to the renderer. */
+  appSecret?: string
 }
 
 export interface AppSnapshot {
@@ -72,6 +100,9 @@ export interface MercariPulseApi {
   updateSettings(patch: Partial<AppSettings>): Promise<AppSnapshot>
   checkNow(id: string): Promise<void>
   testNotification(): Promise<{ supported: boolean }>
+  getQQBotConfig(): Promise<QQBotConfig>
+  saveQQBotConfig(input: SaveQQBotConfigInput): Promise<QQBotConfig>
+  testQQBot(): Promise<{ delivered: number; failed: number }>
   openExternal(url: string): Promise<void>
   onMonitorEvent(listener: (event: MonitorEvent) => void): () => void
 }

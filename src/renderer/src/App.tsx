@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type JSX, type ReactNode } from 'react'
-import type { AppSnapshot, MercariItem, MonitorStatus, NewSubscription, Subscription } from '../../shared/types'
+import type { AppSnapshot, MercariItem, MonitorStatus, NewSubscription, QQBotConfig, QQBotTarget, Subscription } from '../../shared/types'
 
 const statusLabels: Record<MonitorStatus, string> = {
   watching: '监听中', paused: '已暂停', checking: '检查中', backoff: '重试中', error: '异常'
@@ -112,11 +112,62 @@ function AddMonitor({ defaultInterval, onAdd }: { defaultInterval: number; onAdd
   )
 }
 
+function QQBotPanel({ config, onSave, onTest }: {
+  config: QQBotConfig
+  onSave: (value: { enabled: boolean; appId: string; targets: QQBotTarget[]; appSecret?: string }) => Promise<void>
+  onTest: () => Promise<void>
+}): JSX.Element {
+  const [enabled, setEnabled] = useState(config.enabled)
+  const [appId, setAppId] = useState(config.appId)
+  const [secret, setSecret] = useState('')
+  const [targets, setTargets] = useState(config.targets)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    setEnabled(config.enabled); setAppId(config.appId); setTargets(config.targets)
+  }, [config])
+
+  const changeTarget = (id: string, patch: Partial<QQBotTarget>): void => {
+    setTargets((items) => items.map((item) => item.id === id ? { ...item, ...patch } : item))
+  }
+  const addTarget = (): void => setTargets((items) => [...items, {
+    id: crypto.randomUUID(), type: 'group', targetId: '', label: '', enabled: true
+  }])
+  const save = async (): Promise<void> => {
+    setBusy(true)
+    try {
+      await onSave({ enabled, appId, targets, appSecret: secret || undefined })
+      setSecret('')
+    } finally { setBusy(false) }
+  }
+
+  return <section className="qq-panel">
+    <div className="qq-panel-heading"><div><p className="eyebrow">QQ BOT</p><h2>QQ 机器人推送</h2><span>AppSecret 使用 Windows 加密存储，不会显示或上传到 GitHub。</span></div><label className="switch" title={enabled ? '关闭 QQ 推送' : '开启 QQ 推送'}><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /><span /></label></div>
+    <div className="qq-fields">
+      <label>AppID<input value={appId} onChange={(event) => setAppId(event.target.value)} inputMode="numeric" placeholder="QQ 开放平台 AppID" /></label>
+      <label>AppSecret {config.secretConfigured && <em>已保存</em>}<input value={secret} onChange={(event) => setSecret(event.target.value)} type="password" autoComplete="new-password" placeholder={config.secretConfigured ? '留空则保留当前密钥' : '仅保存到本机'} /></label>
+    </div>
+    <div className="qq-target-heading"><div><b>推送目标</b><span>填写 QQ 开放平台提供的 openid / group_openid，不是 QQ 号或群号。</span></div><button className="secondary-button" type="button" onClick={addTarget}>+ 添加目标</button></div>
+    <div className="qq-targets">
+      {targets.map((target) => <div className="qq-target" key={target.id}>
+        <label className="switch compact-switch" title={target.enabled ? '停用目标' : '启用目标'}><input type="checkbox" checked={target.enabled} onChange={(event) => changeTarget(target.id, { enabled: event.target.checked })} /><span /></label>
+        <select value={target.type} onChange={(event) => changeTarget(target.id, { type: event.target.value as QQBotTarget['type'] })}><option value="group">普通 QQ 群</option><option value="c2c">QQ 私聊</option></select>
+        <input value={target.label} onChange={(event) => changeTarget(target.id, { label: event.target.value })} placeholder="备注（可选）" />
+        <input value={target.targetId} onChange={(event) => changeTarget(target.id, { targetId: event.target.value })} placeholder={target.type === 'group' ? 'group_openid' : 'openid'} />
+        <button className="icon-button danger" type="button" title="移除目标" onClick={() => setTargets((items) => items.filter((item) => item.id !== target.id))}>×</button>
+      </div>)}
+      {!targets.length && <div className="qq-empty">暂未添加目标。请先在 QQ 中 @ 机器人或私聊机器人，以取得对应的 openid。</div>}
+    </div>
+    <div className="qq-actions"><button className="secondary-button" type="button" disabled={busy} onClick={() => void save()}>{busy ? '保存中…' : '保存 QQ 配置'}</button><button className="secondary-button" type="button" disabled={busy} onClick={() => void onTest()}>发送 QQ 测试消息</button></div>
+  </section>
+}
+
 export function App(): JSX.Element {
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null)
   const [bootError, setBootError] = useState('')
   const [page, setPage] = useState<'dashboard' | 'settings'>('dashboard')
   const [notice, setNotice] = useState('')
+  const [qqConfig, setQQConfig] = useState<QQBotConfig | null>(null)
   const [, forceClock] = useState(0)
 
   useEffect(() => {
@@ -124,7 +175,9 @@ export function App(): JSX.Element {
       setBootError('桌面桥接组件未能加载。请安装最新版本后重新启动应用。')
       return
     }
-    void window.mercariPulse.getSnapshot().then(setSnapshot).catch((error) => setBootError(String(error)))
+    void Promise.all([window.mercariPulse.getSnapshot(), window.mercariPulse.getQQBotConfig()])
+      .then(([nextSnapshot, nextQQConfig]) => { setSnapshot(nextSnapshot); setQQConfig(nextQQConfig) })
+      .catch((error) => setBootError(String(error)))
     return window.mercariPulse.onMonitorEvent((event) => {
       if (event.snapshot) setSnapshot(event.snapshot)
       if (event.item) setNotice(`发现上新：${event.item.name}`)
@@ -163,7 +216,7 @@ export function App(): JSX.Element {
           <button className={page === 'settings' ? 'active' : ''} onClick={() => setPage('settings')}><span>⚙</span>偏好设置</button>
         </nav>
         <div className="engine-state"><i /><div><b>监控引擎在线</b><span>{activeCount} 个任务运行中</span></div></div>
-        <p className="version">MERCARI PULSE · V0.1.6</p>
+        <p className="version">MERCARI PULSE · V0.2.0</p>
       </aside>
 
       <main className="content">
@@ -208,6 +261,14 @@ export function App(): JSX.Element {
             <Setting label="启动时最小化" detail="应用启动后直接驻留系统托盘"><label className="switch"><input type="checkbox" checked={snapshot.settings.launchMinimized} onChange={(e) => void action(window.mercariPulse.updateSettings({ launchMinimized: e.target.checked }))} /><span /></label></Setting>
             <Setting label="默认检查间隔" detail="低于 1 秒会被安全限制为 1 秒"><select value={snapshot.settings.defaultIntervalMs} onChange={(e) => void action(window.mercariPulse.updateSettings({ defaultIntervalMs: Number(e.target.value) }))}><option value="1000">1 秒</option><option value="2000">2 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option></select></Setting>
           </section>
+          {qqConfig && <QQBotPanel config={qqConfig} onSave={async (value) => {
+            try { setQQConfig(await window.mercariPulse.saveQQBotConfig(value)); setNotice('QQ 机器人配置已保存') } catch (error) { setNotice(error instanceof Error ? error.message : String(error)) }
+          }} onTest={async () => {
+            try {
+              const result = await window.mercariPulse.testQQBot()
+              setNotice(result.failed ? `QQ 测试完成：成功 ${result.delivered}，失败 ${result.failed}` : `QQ 测试消息已发送至 ${result.delivered} 个目标`)
+            } catch (error) { setNotice(error instanceof Error ? error.message : String(error)) }
+          }} />}
           <div className="notice-box"><b>关于 1 秒延迟</b><p>应用每约 1 秒发起一次检查，但最终发现延迟还取决于 Mercari 搜索索引更新时间、网络 RTT 和接口限流。失败时会自动退避，恢复后回到设定间隔。</p></div>
         </>}
       </main>

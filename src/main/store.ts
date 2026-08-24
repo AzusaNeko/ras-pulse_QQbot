@@ -24,7 +24,10 @@ export const defaultState: PersistedState = {
     notificationIncludeName: true,
     notificationIncludePrice: true,
     launchMinimized: false,
-    defaultIntervalMs: 1_000
+    defaultIntervalMs: 1_000,
+    qqBotEnabled: false,
+    qqBotAppId: '',
+    qqBotTargets: []
   },
   seenBySubscription: {}
 }

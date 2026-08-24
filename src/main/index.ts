@@ -1,16 +1,20 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, Notification, screen, shell, Tray } from 'electron'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { AppSettings, MercariItem, NewSubscription, Subscription } from '../shared/types'
+import type { AppSettings, MercariItem, NewSubscription, QQBotConfig, SaveQQBotConfigInput, Subscription } from '../shared/types'
 import { MercariClient } from './mercari-client'
 import { MonitorEngine } from './monitor-engine'
 import { JsonStore } from './store'
+import { QQBotNotifier } from './qq-bot-notifier'
+import { SecretStore } from './secret-store'
 
 const currentDir = fileURLToPath(new URL('.', import.meta.url))
 let window: BrowserWindow | null = null
 let tray: Tray | null = null
 let quitting = false
 let engine: MonitorEngine
+let secretStore: SecretStore
+let qqNotifier: QQBotNotifier
 const activeNotifications = new Set<Notification>()
 const imageToastWindows = new Set<BrowserWindow>()
 
@@ -227,6 +231,39 @@ function registerIpc(): void {
       )
     }
   })
+  ipcMain.handle('qqbot:get-config', async (): Promise<QQBotConfig> => {
+    const settings = engine.snapshot().settings
+    return {
+      enabled: settings.qqBotEnabled,
+      appId: settings.qqBotAppId,
+      targets: settings.qqBotTargets,
+      secretConfigured: await secretStore.has()
+    }
+  })
+  ipcMain.handle('qqbot:save-config', async (_event, input: SaveQQBotConfigInput): Promise<QQBotConfig> => {
+    const appId = input.appId.trim()
+    if (input.enabled && !appId) throw new Error('开启 QQ 推送前请填写 AppID')
+    const targets = input.targets.map((target) => ({
+      ...target,
+      targetId: target.targetId.trim(),
+      label: target.label.trim(),
+      enabled: Boolean(target.enabled)
+    })).filter((target) => target.targetId)
+    if (input.enabled && !targets.some((target) => target.enabled)) throw new Error('开启 QQ 推送前请至少添加一个启用目标')
+    const secret = input.appSecret?.trim()
+    if (secret) await secretStore.set(secret)
+    if (input.enabled && !secret && !await secretStore.has()) throw new Error('开启 QQ 推送前请填写 AppSecret')
+    await engine.updateSettings({
+      qqBotEnabled: Boolean(input.enabled),
+      qqBotAppId: appId,
+      qqBotTargets: targets
+    })
+    return { enabled: Boolean(input.enabled), appId, targets, secretConfigured: await secretStore.has() }
+  })
+  ipcMain.handle('qqbot:test', async () => {
+    const snapshot = engine.snapshot()
+    return qqNotifier.sendTest(snapshot.settings, snapshot.recentItems[0])
+  })
   ipcMain.handle('settings:update', (_event, patch: Partial<AppSettings>) => engine.updateSettings(patch))
   ipcMain.handle('shell:open-external', async (_event, url: string) => {
     const parsed = new URL(url)
@@ -238,7 +275,10 @@ function registerIpc(): void {
 }
 
 app.whenReady().then(async () => {
-  engine = new MonitorEngine(new MercariClient(), new JsonStore(join(app.getPath('userData'), 'state.json')))
+  const userData = app.getPath('userData')
+  secretStore = new SecretStore(join(userData, 'qqbot-secret.dat'))
+  qqNotifier = new QQBotNotifier(secretStore)
+  engine = new MonitorEngine(new MercariClient(), new JsonStore(join(userData, 'state.json')))
   await engine.start()
   engine.on('snapshot', (snapshot) => broadcast({ type: 'snapshot', snapshot }))
   engine.on('newItem', (item) => {
@@ -246,6 +286,11 @@ app.whenReady().then(async () => {
     const settings = engine.snapshot().settings
     if (settings.notificationsEnabled) {
       void showProductNotification(item, settings)
+    }
+    if (settings.qqBotEnabled) {
+      void qqNotifier.sendItem(item, settings).then((result) => {
+        if (result.failed) console.warn(`QQ 推送部分失败：成功 ${result.delivered}，失败 ${result.failed}`)
+      }).catch((error) => console.error(`QQ 推送失败：${error instanceof Error ? error.message : String(error)}`))
     }
   })
   registerIpc()
