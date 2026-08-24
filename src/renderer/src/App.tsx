@@ -186,7 +186,7 @@ function QQBotPanel({ config, onSave, onTest, onSyncPanels }: {
 export function App(): JSX.Element {
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null)
   const [bootError, setBootError] = useState('')
-  const [page, setPage] = useState<'dashboard' | 'settings'>('dashboard')
+  const [page, setPage] = useState<'dashboard' | 'favorites' | 'settings'>('dashboard')
   const [notice, setNotice] = useState('')
   const [qqConfig, setQQConfig] = useState<QQBotConfig | null>(null)
   const [itemFilter, setItemFilter] = useState<'all' | string>('all')
@@ -248,6 +248,7 @@ export function App(): JSX.Element {
         <div className="brand"><div className="brand-mark">M</div><div><strong>Mercari</strong><span>Pulse</span></div></div>
         <nav>
           <button className={page === 'dashboard' ? 'active' : ''} onClick={() => setPage('dashboard')}><span>◫</span>监控面板</button>
+          <button className={page === 'favorites' ? 'active' : ''} onClick={() => setPage('favorites')}><span>♥</span>我的收藏</button>
           <button className={page === 'settings' ? 'active' : ''} onClick={() => setPage('settings')}><span>⚙</span>偏好设置</button>
         </nav>
         <div className="engine-state"><i /><div><b>监控引擎在线</b><span>{activeCount} 个任务运行中</span></div></div>
@@ -285,9 +286,10 @@ export function App(): JSX.Element {
               {!filteredItems.length && <div className="empty-state compact"><b>{itemFilter === 'all' ? '等待查询结果' : '该关键词暂无商品动态'}</b><span>添加关键词后会展示选定数量的最新商品，后续上新将发送系统通知。</span></div>}
             </div>
           </section>
-          <section className="section-block">
-            <div className="section-heading"><div><h2>收藏商品</h2><span>每 30 秒检查一次价格与售出状态</span></div></div>
-            <div className="favorite-grid">{snapshot.favorites.map((favorite) => <FavoriteCard key={favorite.id} item={favorite} onRemove={(id) => void action(window.mercariPulse.removeFavorite(id))} />)}{!snapshot.favorites.length && <div className="empty-state compact"><b>还没有收藏商品</b><span>在商品动态中点击 ♥ 即可收藏并监控。</span></div>}</div>
+        </> : page === 'favorites' ? <>
+          <header><div><p className="eyebrow">MY FAVORITES</p><h1>我的收藏</h1><p>每 30 秒检查一次商品价格与在售状态</p></div><div className="live-chip"><i /> {snapshot.favorites.length} 件收藏</div></header>
+          <section className="section-block favorites-page">
+            <div className="favorite-grid">{snapshot.favorites.map((favorite) => <FavoriteCard key={favorite.id} item={favorite} onRemove={(id) => void action(window.mercariPulse.removeFavorite(id))} />)}{!snapshot.favorites.length && <div className="empty-state compact"><b>还没有收藏商品</b><span>在“监控面板 → 商品动态”中点击 ♥ 即可收藏并监控。</span></div>}</div>
           </section>
         </> : <>
           <header><div><p className="eyebrow">PREFERENCES</p><h1>偏好设置</h1><p>调整通知与默认轮询节奏</p></div></header>
