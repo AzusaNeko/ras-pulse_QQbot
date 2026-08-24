@@ -18,6 +18,13 @@ function price(value: number): string {
   return `¥${value.toLocaleString('ja-JP')}`
 }
 
+function sameQQTargets(left: QQBotTarget[], right: QQBotTarget[]): boolean {
+  return left.length === right.length && left.every((target, index) => {
+    const other = right[index]
+    return target.id === other.id && target.type === other.type && target.targetId === other.targetId && target.label === other.label && target.enabled === other.enabled
+  })
+}
+
 function ItemCard({ item, onDelete }: { item: MercariItem; onDelete: (item: MercariItem) => void }): JSX.Element {
   const openItem = (): void => { void window.mercariPulse.openExternal(item.url) }
   return (
@@ -181,12 +188,12 @@ export function App(): JSX.Element {
     return window.mercariPulse.onMonitorEvent((event) => {
       if (event.snapshot) {
         setSnapshot(event.snapshot)
-        setQQConfig((current) => current ? {
-          ...current,
-          enabled: event.snapshot!.settings.qqBotEnabled,
-          appId: event.snapshot!.settings.qqBotAppId,
-          targets: event.snapshot!.settings.qqBotTargets
-        } : current)
+        setQQConfig((current) => {
+          if (!current) return current
+          const settings = event.snapshot!.settings
+          if (current.enabled === settings.qqBotEnabled && current.appId === settings.qqBotAppId && sameQQTargets(current.targets, settings.qqBotTargets)) return current
+          return { ...current, enabled: settings.qqBotEnabled, appId: settings.qqBotAppId, targets: settings.qqBotTargets }
+        })
       }
       if (event.item) setNotice(`发现上新：${event.item.name}`)
     })
