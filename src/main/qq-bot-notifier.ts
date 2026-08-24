@@ -134,24 +134,23 @@ export class QQBotNotifier {
     const client = this.getClient(settings.qqBotAppId, secret)
     const panel = {
       items: [
-        { type: 'command', name: '添加关键词 ', desc: '输入想监控的关键词' },
-        { type: 'command', name: '添加并屏蔽 ', desc: '关键词 屏蔽 排除词' },
-        { type: 'command', name: '移除关键词 ', desc: '停止接收某个关键词' },
-        { type: 'command', name: '关键词列表', desc: '查看我的订阅' },
-        { type: 'command', name: '帮助', desc: '查看使用说明' }
+        { type: 'command', name: '/添加关键词 ', desc: '选中后填写关键词' },
+        { type: 'command', name: '/移除关键词 ', desc: '选中后填写关键词' },
+        { type: 'command', name: '/关键词列表', desc: '查看我的订阅' },
+        { type: 'command', name: '/帮助', desc: '查看使用说明' }
       ],
       remark: 'ras-pulse-command-panel-v1'
     }
     await client.api.put('/v2/menu', {
       menu: {
         items: [
-          { type: 'send_message', name: '添加关键词', send_message: '添加关键词 ' },
-          { type: 'send_message', name: '添加并屏蔽', send_message: '添加关键词 ' },
+          { type: 'send_message', name: '添加关键词', send_message: '/添加关键词 ' },
+          { type: 'send_message', name: '添加并屏蔽', send_message: '/添加关键词 ' },
           {
             type: 'menu', name: '监控管理', sub_menu_items: [
-              { type: 'send_message', name: '移除关键词', send_message: '移除关键词 ' },
-              { type: 'send_message', name: '关键词列表', send_message: '关键词列表' },
-              { type: 'send_message', name: '帮助', send_message: '帮助' }
+              { type: 'send_message', name: '移除关键词', send_message: '/移除关键词 ' },
+              { type: 'send_message', name: '关键词列表', send_message: '/关键词列表' },
+              { type: 'send_message', name: '帮助', send_message: '/帮助' }
             ]
           }
         ]
