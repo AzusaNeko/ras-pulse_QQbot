@@ -12,6 +12,8 @@ interface ApiItem {
   created?: number | string
   auction?: unknown
   isAuction?: boolean
+  auction_info?: unknown
+  auctionInfo?: unknown
 }
 
 interface SearchResponse {
@@ -73,7 +75,7 @@ export function parseSearchResponse(
       thumbnail: item.thumbnails?.[0] ?? '',
       url: `https://jp.mercari.com/item/${encodeURIComponent(item.id)}`,
       status: item.status ?? 'ITEM_STATUS_UNSPECIFIED',
-      isAuction: Boolean(item.auction ?? item.isAuction),
+      isAuction: item.auction ? true : undefined,
       createdAt: item.created == null ? undefined : Number(item.created),
       detectedAt,
       subscriptionId: subscription.id,
@@ -167,7 +169,7 @@ export class MercariClient implements ItemSource {
   }
 
   async getItem(item: MercariItem): Promise<MercariItem | undefined> {
-    const url = `https://api.mercari.jp/items/get?id=${encodeURIComponent(item.id)}`
+    const url = `https://api.mercari.jp/items/get?id=${encodeURIComponent(item.id)}&include_auction=true`
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 8_000)
     try {
@@ -186,7 +188,7 @@ export class MercariClient implements ItemSource {
         price: Number(detail.price),
         thumbnail: detail.thumbnails?.[0] ?? item.thumbnail,
         status: detail.status ?? item.status,
-        isAuction: Boolean(detail.auction ?? detail.isAuction),
+        isAuction: Boolean(detail.auction_info ?? detail.auctionInfo ?? detail.auction ?? detail.isAuction),
         detectedAt: Date.now()
       }
     } finally {

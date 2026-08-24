@@ -256,8 +256,14 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
 
   private async withAccessibleImages(items: MercariItem[]): Promise<MercariItem[]> {
     const validator = this.source as ItemSource & Partial<ItemImageValidator>
-    if (!validator.isImageAccessible) return items
-    const outcomes = await Promise.all(items.map(async (item) => ({ item, accessible: await validator.isImageAccessible!(item) })))
+    const details = this.source as ItemSource & Partial<ItemDetailSource>
+    const outcomes = await Promise.all(items.map(async (item) => {
+      let enriched = item
+      if (details.getItem) {
+        try { enriched = (await details.getItem(item)) ?? item } catch { /* Keep the listing when detail lookup is temporarily unavailable. */ }
+      }
+      return { item: enriched, accessible: validator.isImageAccessible ? await validator.isImageAccessible(enriched) : true }
+    }))
     return outcomes.flatMap((outcome) => outcome.accessible ? [outcome.item] : [])
   }
 

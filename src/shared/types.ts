@@ -24,7 +24,8 @@ export interface MercariItem {
   thumbnail: string
   url: string
   status: string
-  isAuction: boolean
+  /** Undefined means the item detail could not be loaded yet. */
+  isAuction?: boolean
   createdAt?: number
   detectedAt: number
   subscriptionId: string
@@ -39,7 +40,7 @@ export interface FavoriteItem {
   thumbnail: string
   url: string
   status: string
-  isAuction: boolean
+  isAuction?: boolean
   addedAt: number
   lastCheckedAt?: number
   lastChangedAt?: number

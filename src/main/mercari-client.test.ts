@@ -20,11 +20,11 @@ describe('Mercari client', () => {
 
   it('drops malformed items and maps valid results', () => {
     const result = parseSearchResponse({ items: [
-      { id: 'm123', name: '相机', price: '18000', thumbnails: ['https://example.com/a.jpg'], status: 'ITEM_STATUS_ON_SALE' },
+      { id: 'm123', name: '相机', price: '18000', thumbnails: ['https://example.com/a.jpg'], status: 'ITEM_STATUS_ON_SALE', auction: { id: 'auction-1' } },
       { id: 'broken', name: '无价格' }
     ] }, { id: 'watch-1', keyword: '相机' }, 1234)
 
     expect(result).toHaveLength(1)
-    expect(result[0]).toMatchObject({ id: 'm123', price: 18000, detectedAt: 1234, subscriptionId: 'watch-1' })
+    expect(result[0]).toMatchObject({ id: 'm123', price: 18000, isAuction: true, detectedAt: 1234, subscriptionId: 'watch-1' })
   })
 })
