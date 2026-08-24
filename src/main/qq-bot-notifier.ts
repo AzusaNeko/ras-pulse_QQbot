@@ -59,21 +59,45 @@ export class QQBotNotifier {
     const targets = this.enabledTargets(settings)
     const secret = await this.requireSecret(settings)
     const client = this.getClient(settings.qqBotAppId, secret)
-    const outcomes = await Promise.allSettled(targets.map(async (target) => {
-      const replyTarget = { scope: target.type, targetId: target.targetId.trim() } as const
-      if (!this.isProductImageUrl(item.thumbnail)) {
-        await client.sendText(replyTarget, content)
-        return
-      }
-      try {
-        // QQ retrieves the image directly from the product URL; no image is stored locally.
-        await client.sendImage(replyTarget, { url: item.thumbnail }, { content })
-      } catch (error) {
-        console.warn(`QQ 商品图片上传失败，改为文字推送：${this.targetName(target)} (${error instanceof Error ? error.message : String(error)})`)
-        await client.sendText(replyTarget, content)
-      }
-    }))
+    // Text arrives first; image work must never delay a time-sensitive listing alert.
+    const outcomes = await Promise.allSettled(targets.map((target) => client.sendText({
+      scope: target.type,
+      targetId: target.targetId.trim()
+    }, content)))
+    if (this.isProductImageUrl(item.thumbnail)) {
+      void this.sendImageInBackground(client, targets, item.thumbnail)
+    }
     return this.summarizeOutcomes(outcomes, targets)
+  }
+
+  private async sendImageInBackground(client: QQBot, targets: QQBotTarget[], imageUrl: string): Promise<void> {
+    try {
+      const image = await this.fetchProductImage(imageUrl)
+      const outcomes = await Promise.allSettled(targets.map((target) => client.sendImage({
+        scope: target.type,
+        targetId: target.targetId.trim()
+      }, { buffer: image })))
+      const failed = outcomes.filter((outcome) => outcome.status === 'rejected').length
+      if (failed) console.warn(`QQ 商品图片发送失败：${failed}/${targets.length} 个目标`)
+    } catch (error) {
+      console.warn(`QQ 商品图片加载失败，已保留文字提醒：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  private async fetchProductImage(url: string): Promise<Buffer> {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 4_000)
+    try {
+      const response = await fetch(url, { signal: controller.signal })
+      if (!response.ok) throw new Error(`图片服务器返回 HTTP ${response.status}`)
+      const length = Number(response.headers.get('content-length') ?? '0')
+      if (length > 4 * 1024 * 1024) throw new Error('商品图片超过 4 MB')
+      const image = Buffer.from(await response.arrayBuffer())
+      if (!image.length || image.length > 4 * 1024 * 1024) throw new Error('商品图片无效或过大')
+      return image
+    } finally {
+      clearTimeout(timeout)
+    }
   }
 
   async sendTest(settings: AppSettings, item?: MercariItem): Promise<QQDeliveryResult> {
