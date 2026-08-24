@@ -249,7 +249,6 @@ function registerIpc(): void {
       label: target.label.trim(),
       enabled: Boolean(target.enabled)
     })).filter((target) => target.targetId)
-    if (input.enabled && !targets.some((target) => target.enabled)) throw new Error('开启 QQ 推送前请至少添加一个启用目标')
     const secret = input.appSecret?.trim()
     if (secret) await secretStore.set(secret)
     if (input.enabled && !secret && !await secretStore.has()) throw new Error('开启 QQ 推送前请填写 AppSecret')

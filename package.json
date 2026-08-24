@@ -1,6 +1,6 @@
 {
   "name": "mercari-pulse",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "description": "Low-latency Mercari keyword monitor desktop app",
   "main": "out/main/index.js",
