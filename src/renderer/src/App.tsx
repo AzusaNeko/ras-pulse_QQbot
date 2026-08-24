@@ -25,13 +25,15 @@ function sameQQTargets(left: QQBotTarget[], right: QQBotTarget[]): boolean {
   })
 }
 
-function ItemCard({ item, onDelete }: { item: MercariItem; onDelete: (item: MercariItem) => void }): JSX.Element {
+function ItemCard({ item, onDelete }: { item: MercariItem; onDelete: (item: MercariItem) => void }): JSX.Element | null {
   const openItem = (): void => { void window.mercariPulse.openExternal(item.url) }
+  const [imageStatus, setImageStatus] = useState<'loading' | 'ready' | 'failed'>('loading')
+  if (!item.thumbnail || imageStatus === 'failed') return null
   return (
-    <article className="item-card" role="button" tabIndex={0} onClick={openItem} onKeyDown={(event) => { if (event.key === 'Enter') openItem() }}>
+    <article className={`item-card ${imageStatus === 'ready' ? '' : 'item-card-loading'}`} role="button" tabIndex={imageStatus === 'ready' ? 0 : -1} aria-hidden={imageStatus !== 'ready'} onClick={imageStatus === 'ready' ? openItem : undefined} onKeyDown={(event) => { if (imageStatus === 'ready' && event.key === 'Enter') openItem() }}>
       <button className="item-delete" title="从商品动态中删除" aria-label="删除商品动态" onClick={(event) => { event.stopPropagation(); onDelete(item) }}>×</button>
       <div className="item-image-wrap">
-        {item.thumbnail ? <img src={item.thumbnail} alt="" loading="lazy" /> : <span>画像なし</span>}
+        <img src={item.thumbnail} alt="" onLoad={() => setImageStatus('ready')} onError={() => setImageStatus('failed')} />
       </div>
       <div className="item-copy">
         <div className="item-topline"><span className="keyword-pill">{item.keyword} · {item.discoveryType === 'baseline' ? '初始结果' : '上新'}</span><time>{timeAgo(item.detectedAt)}</time></div>
@@ -175,6 +177,7 @@ export function App(): JSX.Element {
   const [page, setPage] = useState<'dashboard' | 'settings'>('dashboard')
   const [notice, setNotice] = useState('')
   const [qqConfig, setQQConfig] = useState<QQBotConfig | null>(null)
+  const [itemFilter, setItemFilter] = useState<'all' | string>('all')
   const [, forceClock] = useState(0)
 
   useEffect(() => {
@@ -211,6 +214,11 @@ export function App(): JSX.Element {
   }, [notice])
 
   const activeCount = useMemo(() => snapshot?.subscriptions.filter((item) => item.enabled).length ?? 0, [snapshot])
+  const filteredItems = useMemo(() => snapshot?.recentItems.filter((item) => itemFilter === 'all' || item.subscriptionId === itemFilter) ?? [], [snapshot, itemFilter])
+
+  useEffect(() => {
+    if (itemFilter !== 'all' && !snapshot?.subscriptions.some((item) => item.id === itemFilter)) setItemFilter('all')
+  }, [snapshot?.subscriptions, itemFilter])
 
   async function action(work: Promise<AppSnapshot | void>): Promise<void> {
     try {
@@ -254,14 +262,15 @@ export function App(): JSX.Element {
             </div>
           </section>
           <section className="section-block items-section">
-            <div className="section-heading"><div><h2>商品动态</h2><span>首次显示选定数量，随后显示上新</span></div></div>
+            <div className="section-heading"><div><h2>商品动态</h2><span>首次显示选定数量，随后显示上新；图片无法加载的商品会自动隐藏</span></div></div>
+            <div className="item-filters" role="tablist" aria-label="商品关键词分类"><button className={itemFilter === 'all' ? 'active' : ''} onClick={() => setItemFilter('all')}>全部 <span>{snapshot.recentItems.length}</span></button>{snapshot.subscriptions.map((subscription) => <button key={subscription.id} className={itemFilter === subscription.id ? 'active' : ''} onClick={() => setItemFilter(subscription.id)}>{subscription.keyword} <span>{snapshot.recentItems.filter((item) => item.subscriptionId === subscription.id).length}</span></button>)}</div>
             <div className="item-grid">
-              {snapshot.recentItems.map((item) => <ItemCard key={`${item.subscriptionId}-${item.id}`} item={item} onDelete={(value) => {
+              {filteredItems.map((item) => <ItemCard key={`${item.subscriptionId}-${item.id}`} item={item} onDelete={(value) => {
                 if (confirm(`确认从商品动态中删除“${value.name}”吗？`)) {
                   void action(window.mercariPulse.dismissRecentItem(value.subscriptionId, value.id))
                 }
               }} />)}
-              {!snapshot.recentItems.length && <div className="empty-state compact"><b>等待查询结果</b><span>添加关键词后会展示选定数量的最新商品，后续上新将发送系统通知。</span></div>}
+              {!filteredItems.length && <div className="empty-state compact"><b>{itemFilter === 'all' ? '等待查询结果' : '该关键词暂无商品动态'}</b><span>添加关键词后会展示选定数量的最新商品，后续上新将发送系统通知。</span></div>}
             </div>
           </section>
         </> : <>
