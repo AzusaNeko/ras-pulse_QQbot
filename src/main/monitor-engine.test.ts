@@ -1,0 +1,76 @@
+import { describe, expect, it } from 'vitest'
+import type { MercariItem, Subscription } from '../shared/types'
+import type { ItemSource } from './mercari-client'
+import { MonitorEngine } from './monitor-engine'
+import { defaultState, type PersistedState, type StateStore } from './store'
+
+class MemoryStore implements StateStore {
+  state: PersistedState = structuredClone(defaultState)
+  async load(): Promise<PersistedState> { return structuredClone(this.state) }
+  async save(state: PersistedState): Promise<void> { this.state = structuredClone(state) }
+}
+
+class FakeSource implements ItemSource {
+  items: MercariItem[] = []
+  async search(subscription: Subscription): Promise<MercariItem[]> {
+    return structuredClone(this.items).map((value) => ({ ...value, subscriptionId: subscription.id }))
+  }
+}
+
+function item(id: string): MercariItem {
+  return {
+    id,
+    name: `商品 ${id}`,
+    price: 1_000,
+    thumbnail: '',
+    url: `https://jp.mercari.com/item/${id}`,
+    status: 'ITEM_STATUS_ON_SALE',
+    detectedAt: Date.now(),
+    subscriptionId: 'source-value',
+    keyword: '相机'
+  }
+}
+
+describe('MonitorEngine baseline', () => {
+  it('shows five initial products without emitting notifications, then emits new products', async () => {
+    const source = new FakeSource()
+    const engine = new MonitorEngine(source, new MemoryStore())
+    const notified: MercariItem[] = []
+    source.items = Array.from({ length: 7 }, (_, index) => item(`m${index + 1}`))
+    await engine.start()
+    engine.on('newItem', (value) => notified.push(value))
+
+    const snapshot = await engine.add({ keyword: '相机', initialDisplayCount: 3 })
+    const subscriptionId = snapshot.subscriptions[0].id
+    await engine.checkNow(subscriptionId)
+
+    expect(engine.snapshot().recentItems).toHaveLength(3)
+    expect(engine.snapshot().recentItems.every((value) => value.discoveryType === 'baseline')).toBe(true)
+    expect(notified).toHaveLength(0)
+
+    source.items = [item('m-new'), ...source.items]
+    await engine.checkNow(subscriptionId)
+    expect(engine.snapshot().recentItems[0]).toMatchObject({ id: 'm-new', discoveryType: 'new' })
+    expect(notified.map((value) => value.id)).toEqual(['m-new'])
+
+    await engine.dismissRecentItem(subscriptionId, 'm-new')
+    expect(engine.snapshot().recentItems.some((value) => value.id === 'm-new')).toBe(false)
+    await engine.remove(subscriptionId, false)
+    expect(engine.snapshot().recentItems).toHaveLength(3)
+    engine.stop()
+  })
+
+  it('can remove a subscription together with its related activity', async () => {
+    const source = new FakeSource()
+    const engine = new MonitorEngine(source, new MemoryStore())
+    source.items = [item('m1'), item('m2')]
+    await engine.start()
+    const snapshot = await engine.add({ keyword: '相机', initialDisplayCount: 2 })
+    const subscriptionId = snapshot.subscriptions[0].id
+    await engine.checkNow(subscriptionId)
+    expect(engine.snapshot().recentItems).toHaveLength(2)
+    await engine.remove(subscriptionId, true)
+    expect(engine.snapshot().recentItems).toHaveLength(0)
+    engine.stop()
+  })
+})
