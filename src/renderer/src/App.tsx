@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type JSX, type ReactNode } from 'react'
-import type { AppSnapshot, FavoriteItem, LicenseStatus, MercariItem, MonitorStatus, NewSubscription, QQBotConfig, QQBotTarget, Subscription } from '../../shared/types'
+import type { AppSnapshot, FavoriteItem, MercariItem, MonitorStatus, NewSubscription, QQBotConfig, QQBotTarget, Subscription } from '../../shared/types'
 
 const statusLabels: Record<MonitorStatus, string> = {
   watching: '监听中', paused: '已暂停', checking: '检查中', backoff: '重试中', error: '异常'
@@ -190,9 +190,6 @@ function QQBotPanel({ config, onSave, onTest, onSyncPanels }: {
 
 export function App(): JSX.Element {
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null)
-  const [license, setLicense] = useState<LicenseStatus | null>(null)
-  const [licenseKey, setLicenseKey] = useState('')
-  const [activating, setActivating] = useState(false)
   const [bootError, setBootError] = useState('')
   const [page, setPage] = useState<'dashboard' | 'favorites' | 'settings'>('dashboard')
   const [notice, setNotice] = useState('')
@@ -205,12 +202,9 @@ export function App(): JSX.Element {
       setBootError('桌面桥接组件未能加载。请安装最新版本后重新启动应用。')
       return
     }
-    void window.mercariPulse.getLicenseStatus().then(async (status) => {
-      setLicense(status)
-      if (!status.active) return
-      const [nextSnapshot, nextQQConfig] = await Promise.all([window.mercariPulse.getSnapshot(), window.mercariPulse.getQQBotConfig()])
-      setSnapshot(nextSnapshot); setQQConfig(nextQQConfig)
-    }).catch((error) => setBootError(String(error)))
+    void Promise.all([window.mercariPulse.getSnapshot(), window.mercariPulse.getQQBotConfig()])
+      .then(([nextSnapshot, nextQQConfig]) => { setSnapshot(nextSnapshot); setQQConfig(nextQQConfig) })
+      .catch((error) => setBootError(String(error)))
     return window.mercariPulse.onMonitorEvent((event) => {
       if (event.snapshot) {
         setSnapshot(event.snapshot)
@@ -251,8 +245,6 @@ export function App(): JSX.Element {
   }
 
   if (bootError) return <main className="loading"><div className="pulse-logo">!</div><p>{bootError}</p></main>
-  if (!license) return <main className="loading"><div className="pulse-logo">M</div><p>正在验证授权…</p></main>
-  if (!license.active) return <main className="license-screen"><section className="license-card"><div className="brand-mark">M</div><p className="eyebrow">OFFLINE LICENSE</p><h1>激活 Mercari Pulse</h1><p>此设备需要专属授权码后才能使用监控功能。</p><label>设备代码<input readOnly value={license.deviceId} onFocus={(event) => event.currentTarget.select()} /></label><small>将设备代码发给授权方，用于生成仅限本机使用的授权码。</small><label>授权码<textarea value={licenseKey} onChange={(event) => setLicenseKey(event.target.value)} placeholder="MP1.…" /></label>{license.error && <div className="license-error">{license.error}</div>}<button className="primary" disabled={!licenseKey.trim() || activating} onClick={() => void (async () => { setActivating(true); try { const result = await window.mercariPulse.activateLicense(licenseKey); setLicense(result); if (result.active) { const [nextSnapshot, nextQQConfig] = await Promise.all([window.mercariPulse.getSnapshot(), window.mercariPulse.getQQBotConfig()]); setSnapshot(nextSnapshot); setQQConfig(nextQQConfig) } } finally { setActivating(false) } })()}>{activating ? '正在验证…' : '激活软件'}</button></section></main>
   if (!snapshot) return <main className="loading"><div className="pulse-logo">M</div><p>正在启动监控引擎…</p></main>
 
   return (

@@ -1,32 +1,25 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, Notification, screen, shell, Tray } from 'electron'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { AppSettings, FavoriteUpdate, LicenseStatus, MercariItem, NewSubscription, QQBotConfig, SaveQQBotConfigInput, Subscription } from '../shared/types'
+import type { AppSettings, FavoriteUpdate, MercariItem, NewSubscription, QQBotConfig, SaveQQBotConfigInput, Subscription } from '../shared/types'
 import { MercariClient } from './mercari-client'
 import { MonitorEngine } from './monitor-engine'
 import { JsonStore } from './store'
 import { QQBotNotifier } from './qq-bot-notifier'
 import { SecretStore } from './secret-store'
 import { parseQQKeywordCommand, qqKeywordHelp } from './qq-keyword-command'
-import { OfflineLicenseManager } from './offline-license'
 
 const currentDir = fileURLToPath(new URL('.', import.meta.url))
 let window: BrowserWindow | null = null
 let tray: Tray | null = null
 let quitting = false
-let engine!: MonitorEngine
+let engine: MonitorEngine
 let secretStore: SecretStore
-let qqNotifier!: QQBotNotifier
-let licenseManager: OfflineLicenseManager
+let qqNotifier: QQBotNotifier
 const activeNotifications = new Set<Notification>()
 const imageToastWindows = new Set<BrowserWindow>()
 
 app.setAppUserModelId('com.mercari-pulse.desktop')
-
-function requireEngine(): MonitorEngine {
-  if (!engine) throw new Error('软件尚未激活，请先输入有效授权码。')
-  return engine
-}
 
 function showTrayFallback(title: string, body: string, silent: boolean): void {
   if (process.platform !== 'win32' || !tray) return
@@ -228,22 +221,16 @@ function createTray(): void {
 }
 
 function registerIpc(): void {
-  ipcMain.handle('license:status', (): Promise<LicenseStatus> => licenseManager.status())
-  ipcMain.handle('license:activate', async (_event, licenseKey: string): Promise<LicenseStatus> => {
-    const status = await licenseManager.activate(licenseKey)
-    if (status.active) await startAuthorizedServices(app.getPath('userData'))
-    return status
-  })
-  ipcMain.handle('monitor:snapshot', () => requireEngine().snapshot())
-  ipcMain.handle('monitor:add', (_event, input: NewSubscription) => requireEngine().add(input))
-  ipcMain.handle('monitor:update', (_event, id: string, patch: Partial<Subscription>) => requireEngine().update(id, patch))
-  ipcMain.handle('monitor:remove', (_event, id: string, removeRelatedItems: boolean) => requireEngine().remove(id, removeRelatedItems))
-  ipcMain.handle('monitor:dismiss-item', (_event, subscriptionId: string, itemId: string) => requireEngine().dismissRecentItem(subscriptionId, itemId))
-  ipcMain.handle('favorites:add', (_event, item: MercariItem) => requireEngine().addFavorite(item))
-  ipcMain.handle('favorites:remove', (_event, itemId: string) => requireEngine().removeFavorite(itemId))
-  ipcMain.handle('monitor:check-now', (_event, id: string) => requireEngine().checkNow(id))
+  ipcMain.handle('monitor:snapshot', () => engine.snapshot())
+  ipcMain.handle('monitor:add', (_event, input: NewSubscription) => engine.add(input))
+  ipcMain.handle('monitor:update', (_event, id: string, patch: Partial<Subscription>) => engine.update(id, patch))
+  ipcMain.handle('monitor:remove', (_event, id: string, removeRelatedItems: boolean) => engine.remove(id, removeRelatedItems))
+  ipcMain.handle('monitor:dismiss-item', (_event, subscriptionId: string, itemId: string) => engine.dismissRecentItem(subscriptionId, itemId))
+  ipcMain.handle('favorites:add', (_event, item: MercariItem) => engine.addFavorite(item))
+  ipcMain.handle('favorites:remove', (_event, itemId: string) => engine.removeFavorite(itemId))
+  ipcMain.handle('monitor:check-now', (_event, id: string) => engine.checkNow(id))
   ipcMain.handle('notifications:test', async () => {
-    const snapshot = requireEngine().snapshot()
+    const snapshot = engine.snapshot()
     const latestItem = snapshot.recentItems[0]
     if (latestItem) {
       return { supported: await showProductNotification(latestItem, snapshot.settings, true) }
@@ -301,8 +288,8 @@ function registerIpc(): void {
   })
 }
 
-async function startAuthorizedServices(userData: string): Promise<void> {
-  if (engine) return
+app.whenReady().then(async () => {
+  const userData = app.getPath('userData')
   secretStore = new SecretStore(join(userData, 'qqbot-secret.dat'))
   engine = new MonitorEngine(new MercariClient(), new JsonStore(join(userData, 'state.json')))
   await engine.start()
@@ -370,16 +357,9 @@ async function startAuthorizedServices(userData: string): Promise<void> {
   if (engine.snapshot().settings.qqBotEnabled) {
     void qqNotifier.connect(engine.snapshot().settings).catch((error) => console.error(`QQ 机器人自动连接失败：${error instanceof Error ? error.message : String(error)}`))
   }
-}
-
-app.whenReady().then(async () => {
-  const userData = app.getPath('userData')
-  licenseManager = new OfflineLicenseManager(join(userData, 'license.json'))
-  secretStore = new SecretStore(join(userData, 'qqbot-secret.dat'))
-  registerIpc()
-  if ((await licenseManager.status()).active) await startAuthorizedServices(userData)
   createWindow()
   createTray()
+
   app.on('activate', () => window ? showWindow() : createWindow())
 })
 
