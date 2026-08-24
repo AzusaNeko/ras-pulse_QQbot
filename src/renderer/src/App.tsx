@@ -83,9 +83,11 @@ function SubscriptionCard({ item, fastTaken, onChange, onDelete, onCheck }: {
 
 function FavoriteCard({ item, onRemove }: { item: FavoriteItem; onRemove: (id: string) => void }): JSX.Element {
   const sold = /SOLD|SOLD_OUT/i.test(item.status)
+  const priceChange = item.previousPrice == null ? undefined : item.price - item.previousPrice
+  const priceChangeLabel = priceChange == null || priceChange === 0 ? undefined : priceChange < 0 ? '降价' : '涨价'
   return <article className={`favorite-card ${sold ? 'sold' : ''}`} onClick={() => void window.mercariPulse.openExternal(item.url)}>
     <img src={item.thumbnail} alt="" />
-    <div><span>{sold ? '已售出' : '收藏监控中'} · {item.lastCheckedAt ? timeAgo(item.lastCheckedAt) : '等待检查'}</span><strong>{item.name}</strong><b>{price(item.price)} <i className={`sale-type ${item.isAuction === true ? 'auction' : ''}`}>{item.isAuction === true ? '拍卖' : item.isAuction === false ? '直售' : '确认中'}</i></b>{item.error && <small>{item.error}</small>}</div>
+    <div><span>{sold ? '已售出' : '收藏监控中'} · {item.lastCheckedAt ? timeAgo(item.lastCheckedAt) : '等待检查'}</span><strong>{item.name}</strong><b>{price(item.price)} <i className={`sale-type ${item.isAuction === true ? 'auction' : ''}`}>{item.isAuction === true ? '拍卖' : item.isAuction === false ? '直售' : '确认中'}</i></b>{priceChangeLabel && <small className={`favorite-price-change ${priceChange! < 0 ? 'decrease' : 'increase'}`}>{priceChangeLabel}：{price(item.previousPrice!)} → {price(item.price)}</small>}{item.error && <small>{item.error}</small>}</div>
     <button className="icon-button danger" title="取消收藏" onClick={(event) => { event.stopPropagation(); onRemove(item.id) }}>×</button>
   </article>
 }

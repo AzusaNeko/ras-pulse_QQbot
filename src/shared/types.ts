@@ -44,6 +44,8 @@ export interface FavoriteItem {
   addedAt: number
   lastCheckedAt?: number
   lastChangedAt?: number
+  /** Price before the most recently observed price change. */
+  previousPrice?: number
   error?: string
 }
 

@@ -234,6 +234,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
           favorite.lastCheckedAt = Date.now()
           if (!latest) continue
           const priceChanged = latest.price !== favorite.price
+          const previousPrice = favorite.price
           const sold = latest.status !== favorite.status && /SOLD|SOLD_OUT/i.test(latest.status)
           favorite.name = latest.name
           favorite.price = latest.price
@@ -242,6 +243,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
           favorite.isAuction = latest.isAuction
           favorite.error = undefined
           if (priceChanged || sold) {
+            if (priceChanged) favorite.previousPrice = previousPrice
             favorite.lastChangedAt = Date.now()
             this.emit('favoriteUpdate', { favorite: structuredClone(favorite), priceChanged, sold })
           }
