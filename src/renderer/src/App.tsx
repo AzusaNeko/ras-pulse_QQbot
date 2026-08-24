@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type JSX, type ReactNode } from 'react'
-import type { AppSnapshot, MercariItem, MonitorStatus, NewSubscription, QQBotConfig, QQBotTarget, Subscription } from '../../shared/types'
+import type { AppSnapshot, FavoriteItem, MercariItem, MonitorStatus, NewSubscription, QQBotConfig, QQBotTarget, Subscription } from '../../shared/types'
 
 const statusLabels: Record<MonitorStatus, string> = {
   watching: '监听中', paused: '已暂停', checking: '检查中', backoff: '重试中', error: '异常'
@@ -25,13 +25,14 @@ function sameQQTargets(left: QQBotTarget[], right: QQBotTarget[]): boolean {
   })
 }
 
-function ItemCard({ item, onDelete }: { item: MercariItem; onDelete: (item: MercariItem) => void }): JSX.Element | null {
+function ItemCard({ item, favorite, onFavorite, onDelete }: { item: MercariItem; favorite: boolean; onFavorite: (item: MercariItem) => void; onDelete: (item: MercariItem) => void }): JSX.Element | null {
   const openItem = (): void => { void window.mercariPulse.openExternal(item.url) }
   const [imageStatus, setImageStatus] = useState<'loading' | 'ready' | 'failed'>('loading')
   if (!item.thumbnail || imageStatus === 'failed') return null
   return (
     <article className={`item-card ${imageStatus === 'ready' ? '' : 'item-card-loading'}`} role="button" tabIndex={imageStatus === 'ready' ? 0 : -1} aria-hidden={imageStatus !== 'ready'} onClick={imageStatus === 'ready' ? openItem : undefined} onKeyDown={(event) => { if (imageStatus === 'ready' && event.key === 'Enter') openItem() }}>
       <button className="item-delete" title="从商品动态中删除" aria-label="删除商品动态" onClick={(event) => { event.stopPropagation(); onDelete(item) }}>×</button>
+      <button className={`item-favorite ${favorite ? 'active' : ''}`} title={favorite ? '已收藏' : '收藏并监控状态'} aria-label="收藏商品" onClick={(event) => { event.stopPropagation(); onFavorite(item) }}>♥</button>
       <div className="item-image-wrap">
         <img src={item.thumbnail} alt="" onLoad={() => setImageStatus('ready')} onError={() => setImageStatus('failed')} />
       </div>
@@ -60,7 +61,7 @@ function SubscriptionCard({ item, onChange, onDelete, onCheck }: {
             {item.excludeKeyword && `排除：${item.excludeKeyword} · `}
             {item.minPrice != null || item.maxPrice != null
               ? `${item.minPrice ? price(item.minPrice) : '不限'} — ${item.maxPrice ? price(item.maxPrice) : '不限'} · ` : ''}
-            首次 {item.initialDisplayCount ?? 2} 条 · 每 {(item.intervalMs / 1000).toFixed(item.intervalMs % 1000 ? 1 : 0)} 秒
+            首次 {item.initialDisplayCount ?? 2} 条 · 每 <select className="inline-interval" value={item.intervalMs} onChange={(event) => onChange(item.id, { intervalMs: Number(event.target.value) })}><option value="500">0.5 秒（极速）</option><option value="1000">1 秒</option><option value="2000">2 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option></select>
           </p>
           <small title={item.error}>{item.error ? item.error : `上次成功：${timeAgo(item.lastSuccessAt)}`}</small>
         </div>
@@ -75,6 +76,15 @@ function SubscriptionCard({ item, onChange, onDelete, onCheck }: {
       </div>
     </article>
   )
+}
+
+function FavoriteCard({ item, onRemove }: { item: FavoriteItem; onRemove: (id: string) => void }): JSX.Element {
+  const sold = /SOLD|SOLD_OUT/i.test(item.status)
+  return <article className={`favorite-card ${sold ? 'sold' : ''}`} onClick={() => void window.mercariPulse.openExternal(item.url)}>
+    <img src={item.thumbnail} alt="" />
+    <div><span>{sold ? '已售出' : '收藏监控中'} · {item.lastCheckedAt ? timeAgo(item.lastCheckedAt) : '等待检查'}</span><strong>{item.name}</strong><b>{price(item.price)}</b>{item.error && <small>{item.error}</small>}</div>
+    <button className="icon-button danger" title="取消收藏" onClick={(event) => { event.stopPropagation(); onRemove(item.id) }}>×</button>
+  </article>
 }
 
 function AddMonitor({ defaultInterval, onAdd }: { defaultInterval: number; onAdd: (value: NewSubscription) => Promise<void> }): JSX.Element {
@@ -267,13 +277,17 @@ export function App(): JSX.Element {
             <div className="section-heading"><div><h2>商品动态</h2><span>首次显示选定数量，随后显示上新；图片无法加载的商品会自动隐藏</span></div></div>
             <div className="item-filters" role="tablist" aria-label="商品关键词分类"><button className={itemFilter === 'all' ? 'active' : ''} onClick={() => setItemFilter('all')}>全部 <span>{snapshot.recentItems.length}</span></button>{snapshot.subscriptions.map((subscription) => <button key={subscription.id} className={itemFilter === subscription.id ? 'active' : ''} onClick={() => setItemFilter(subscription.id)}>{subscription.keyword} <span>{snapshot.recentItems.filter((item) => item.subscriptionId === subscription.id).length}</span></button>)}</div>
             <div className="item-grid">
-              {filteredItems.map((item) => <ItemCard key={`${item.subscriptionId}-${item.id}`} item={item} onDelete={(value) => {
+              {filteredItems.map((item) => <ItemCard key={`${item.subscriptionId}-${item.id}`} item={item} favorite={snapshot.favorites.some((favorite) => favorite.id === item.id)} onFavorite={(value) => void action(window.mercariPulse.addFavorite(value))} onDelete={(value) => {
                 if (confirm(`确认从商品动态中删除“${value.name}”吗？`)) {
                   void action(window.mercariPulse.dismissRecentItem(value.subscriptionId, value.id))
                 }
               }} />)}
               {!filteredItems.length && <div className="empty-state compact"><b>{itemFilter === 'all' ? '等待查询结果' : '该关键词暂无商品动态'}</b><span>添加关键词后会展示选定数量的最新商品，后续上新将发送系统通知。</span></div>}
             </div>
+          </section>
+          <section className="section-block">
+            <div className="section-heading"><div><h2>收藏商品</h2><span>每 30 秒检查一次价格与售出状态</span></div></div>
+            <div className="favorite-grid">{snapshot.favorites.map((favorite) => <FavoriteCard key={favorite.id} item={favorite} onRemove={(id) => void action(window.mercariPulse.removeFavorite(id))} />)}{!snapshot.favorites.length && <div className="empty-state compact"><b>还没有收藏商品</b><span>在商品动态中点击 ♥ 即可收藏并监控。</span></div>}</div>
           </section>
         </> : <>
           <header><div><p className="eyebrow">PREFERENCES</p><h1>偏好设置</h1><p>调整通知与默认轮询节奏</p></div></header>
@@ -285,7 +299,7 @@ export function App(): JSX.Element {
             <Setting label="测试后台通知" detail="使用最新一条商品动态预览当前通知组合"><button className="secondary-button" onClick={() => void window.mercariPulse.testNotification().then((result) => setNotice(result.supported ? '测试通知已发送' : '系统通知不可用，已尝试托盘气泡提醒')).catch((error) => setNotice(String(error)))}>发送测试通知</button></Setting>
             <Setting label="通知声音" detail="使用操作系统的默认提示音"><label className="switch"><input type="checkbox" checked={snapshot.settings.soundEnabled} onChange={(e) => void action(window.mercariPulse.updateSettings({ soundEnabled: e.target.checked }))} /><span /></label></Setting>
             <Setting label="启动时最小化" detail="应用启动后直接驻留系统托盘"><label className="switch"><input type="checkbox" checked={snapshot.settings.launchMinimized} onChange={(e) => void action(window.mercariPulse.updateSettings({ launchMinimized: e.target.checked }))} /><span /></label></Setting>
-            <Setting label="默认检查间隔" detail="低于 1 秒会被安全限制为 1 秒"><select value={snapshot.settings.defaultIntervalMs} onChange={(e) => void action(window.mercariPulse.updateSettings({ defaultIntervalMs: Number(e.target.value) }))}><option value="1000">1 秒</option><option value="2000">2 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option></select></Setting>
+            <Setting label="默认检查间隔" detail="极速模式请求更频繁，可能更易触发限流"><select value={snapshot.settings.defaultIntervalMs} onChange={(e) => void action(window.mercariPulse.updateSettings({ defaultIntervalMs: Number(e.target.value) }))}><option value="500">0.5 秒（极速）</option><option value="1000">1 秒</option><option value="2000">2 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option></select></Setting>
           </section>
           {qqConfig && <QQBotPanel config={qqConfig} onSave={async (value) => {
             try { setQQConfig(await window.mercariPulse.saveQQBotConfig(value)); setNotice('QQ 机器人配置已保存') } catch (error) { setNotice(error instanceof Error ? error.message : String(error)) }

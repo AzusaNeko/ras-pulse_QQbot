@@ -25,6 +25,10 @@ export interface ItemImageValidator {
   isImageAccessible(item: MercariItem): Promise<boolean>
 }
 
+export interface ItemDetailSource {
+  getItem(item: MercariItem): Promise<MercariItem | undefined>
+}
+
 function base64urlJson(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString('base64url')
 }
@@ -154,6 +158,33 @@ export class MercariClient implements ItemSource {
       return response.ok && (!type || type.startsWith('image/'))
     } catch {
       return false
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
+
+  async getItem(item: MercariItem): Promise<MercariItem | undefined> {
+    const url = `https://api.mercari.jp/items/get?id=${encodeURIComponent(item.id)}`
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 8_000)
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: { accept: '*/*', dpop: createDpop('GET', url), 'x-platform': 'web', 'user-agent': 'python-mercari' }
+      })
+      if (response.status === 404) return { ...item, status: 'ITEM_STATUS_SOLD_OUT', detectedAt: Date.now() }
+      if (!response.ok) throw new Error(`Mercari item API ${response.status}`)
+      const payload = await response.json() as { item?: ApiItem, data?: { item?: ApiItem } | ApiItem }
+      const detail = (payload.item ?? (payload.data && 'item' in payload.data ? payload.data.item : payload.data)) as ApiItem | undefined
+      if (!detail || typeof detail !== 'object' || !detail.id || !detail.name || !Number.isFinite(Number(detail.price))) return undefined
+      return {
+        ...item,
+        name: detail.name,
+        price: Number(detail.price),
+        thumbnail: detail.thumbnails?.[0] ?? item.thumbnail,
+        status: detail.status ?? item.status,
+        detectedAt: Date.now()
+      }
     } finally {
       clearTimeout(timeout)
     }

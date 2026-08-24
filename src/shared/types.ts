@@ -31,6 +31,25 @@ export interface MercariItem {
   discoveryType?: 'baseline' | 'new'
 }
 
+export interface FavoriteItem {
+  id: string
+  name: string
+  price: number
+  thumbnail: string
+  url: string
+  status: string
+  addedAt: number
+  lastCheckedAt?: number
+  lastChangedAt?: number
+  error?: string
+}
+
+export interface FavoriteUpdate {
+  favorite: FavoriteItem
+  priceChanged: boolean
+  sold: boolean
+}
+
 export interface AppSettings {
   notificationsEnabled: boolean
   soundEnabled: boolean
@@ -87,6 +106,7 @@ export interface SaveQQBotConfigInput {
 export interface AppSnapshot {
   subscriptions: Subscription[]
   recentItems: MercariItem[]
+  favorites: FavoriteItem[]
   settings: AppSettings
   startedAt: number
 }
@@ -101,9 +121,10 @@ export interface NewSubscription {
 }
 
 export interface MonitorEvent {
-  type: 'snapshot' | 'new-item'
+  type: 'snapshot' | 'new-item' | 'favorite-update'
   snapshot?: AppSnapshot
   item?: MercariItem
+  favoriteUpdate?: FavoriteUpdate
 }
 
 export interface MercariPulseApi {
@@ -112,6 +133,8 @@ export interface MercariPulseApi {
   updateSubscription(id: string, patch: Partial<Subscription>): Promise<AppSnapshot>
   removeSubscription(id: string, removeRelatedItems: boolean): Promise<AppSnapshot>
   dismissRecentItem(subscriptionId: string, itemId: string): Promise<AppSnapshot>
+  addFavorite(item: MercariItem): Promise<AppSnapshot>
+  removeFavorite(itemId: string): Promise<AppSnapshot>
   updateSettings(patch: Partial<AppSettings>): Promise<AppSnapshot>
   checkNow(id: string): Promise<void>
   testNotification(): Promise<{ supported: boolean }>

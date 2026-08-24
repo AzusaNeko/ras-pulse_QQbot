@@ -1,10 +1,11 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import type { AppSettings, MercariItem, QQBotKeyword, Subscription } from '../shared/types'
+import type { AppSettings, FavoriteItem, MercariItem, QQBotKeyword, Subscription } from '../shared/types'
 
 export interface PersistedState {
   subscriptions: Subscription[]
   recentItems: MercariItem[]
+  favorites: FavoriteItem[]
   settings: AppSettings
   seenBySubscription: Record<string, string[]>
 }
@@ -17,6 +18,7 @@ export interface StateStore {
 export const defaultState: PersistedState = {
   subscriptions: [],
   recentItems: [],
+  favorites: [],
   settings: {
     notificationsEnabled: true,
     soundEnabled: true,
@@ -64,6 +66,7 @@ export class JsonStore implements StateStore {
         },
         subscriptions: parsed.subscriptions ?? [],
         recentItems: parsed.recentItems ?? [],
+        favorites: parsed.favorites ?? [],
         seenBySubscription: parsed.seenBySubscription ?? {}
       }
     } catch (error) {

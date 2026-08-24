@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, Notification, screen, shell, Tray } from 'electron'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { AppSettings, MercariItem, NewSubscription, QQBotConfig, SaveQQBotConfigInput, Subscription } from '../shared/types'
+import type { AppSettings, FavoriteUpdate, MercariItem, NewSubscription, QQBotConfig, SaveQQBotConfigInput, Subscription } from '../shared/types'
 import { MercariClient } from './mercari-client'
 import { MonitorEngine } from './monitor-engine'
 import { JsonStore } from './store'
@@ -76,6 +76,16 @@ async function showProductNotification(item: MercariItem, settings: AppSettings,
     : undefined
   showImageToast(item, settings, imageUrl, isTest)
   return true
+}
+
+function showFavoriteNotification(update: FavoriteUpdate, settings: AppSettings): void {
+  const details = [
+    update.sold ? '商品已售出' : '',
+    update.priceChanged ? `价格变为 ¥${update.favorite.price.toLocaleString('ja-JP')}` : ''
+  ].filter(Boolean).join(' · ')
+  const item: MercariItem = { ...update.favorite, detectedAt: Date.now(), subscriptionId: 'favorite', keyword: '收藏' }
+  if (settings.notificationIncludeImage && isMercariImageUrl(item.thumbnail)) showImageToast(item, settings, item.thumbnail, false)
+  else showNativeNotification('收藏商品状态变化', `${item.name}\n${details}`, !settings.soundEnabled, { id: `favorite-${item.id}-${Date.now()}`, onClick: () => void shell.openExternal(item.url) })
 }
 
 function escapeHtml(value: string): string {
@@ -216,6 +226,8 @@ function registerIpc(): void {
   ipcMain.handle('monitor:update', (_event, id: string, patch: Partial<Subscription>) => engine.update(id, patch))
   ipcMain.handle('monitor:remove', (_event, id: string, removeRelatedItems: boolean) => engine.remove(id, removeRelatedItems))
   ipcMain.handle('monitor:dismiss-item', (_event, subscriptionId: string, itemId: string) => engine.dismissRecentItem(subscriptionId, itemId))
+  ipcMain.handle('favorites:add', (_event, item: MercariItem) => engine.addFavorite(item))
+  ipcMain.handle('favorites:remove', (_event, itemId: string) => engine.removeFavorite(itemId))
   ipcMain.handle('monitor:check-now', (_event, id: string) => engine.checkNow(id))
   ipcMain.handle('notifications:test', async () => {
     const snapshot = engine.snapshot()
@@ -336,6 +348,10 @@ app.whenReady().then(async () => {
         if (result.failed) console.warn(`QQ 推送部分失败：成功 ${result.delivered}，失败 ${result.failed}`)
       }).catch((error) => console.error(`QQ 推送失败：${error instanceof Error ? error.message : String(error)}`))
     }
+  })
+  engine.on('favoriteUpdate', (favoriteUpdate) => {
+    broadcast({ type: 'favorite-update', favoriteUpdate })
+    if (engine.snapshot().settings.notificationsEnabled) showFavoriteNotification(favoriteUpdate, engine.snapshot().settings)
   })
   registerIpc()
   if (engine.snapshot().settings.qqBotEnabled) {

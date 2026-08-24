@@ -1,10 +1,10 @@
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
-import type { AppSnapshot, AppSettings, MercariItem, NewSubscription, Subscription } from '../shared/types'
-import type { ItemImageValidator, ItemSource } from './mercari-client'
+import type { AppSnapshot, AppSettings, FavoriteUpdate, MercariItem, NewSubscription, Subscription } from '../shared/types'
+import type { ItemDetailSource, ItemImageValidator, ItemSource } from './mercari-client'
 import type { PersistedState, StateStore } from './store'
 
-const MIN_INTERVAL_MS = 1_000
+const MIN_INTERVAL_MS = 500
 const MAX_RECENT_ITEMS = 200
 const MAX_SEEN_IDS = 500
 const STALLED_CHECK_GRACE_MS = 15_000
@@ -16,6 +16,7 @@ function clampInitialDisplayCount(value?: number): number {
 export interface EngineEvents {
   snapshot: [AppSnapshot]
   newItem: [MercariItem]
+  favoriteUpdate: [FavoriteUpdate]
 }
 
 export class MonitorEngine extends EventEmitter<EngineEvents> {
@@ -23,6 +24,8 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
   private readonly timers = new Map<string, NodeJS.Timeout>()
   private readonly running = new Set<string>()
   private healthTimer: NodeJS.Timeout | undefined
+  private favoriteTimer: NodeJS.Timeout | undefined
+  private favoritesRunning = false
   private startedAt = Date.now()
 
   constructor(
@@ -36,6 +39,8 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     for (const subscription of this.state.subscriptions) this.schedule(subscription.id, 120)
     this.healthTimer = setInterval(() => this.recoverStalledSubscriptions(), 5_000)
     this.healthTimer.unref()
+    this.favoriteTimer = setInterval(() => void this.checkFavorites(), 30_000)
+    this.favoriteTimer.unref()
     this.emitSnapshot()
   }
 
@@ -44,12 +49,15 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     this.timers.clear()
     if (this.healthTimer) clearInterval(this.healthTimer)
     this.healthTimer = undefined
+    if (this.favoriteTimer) clearInterval(this.favoriteTimer)
+    this.favoriteTimer = undefined
   }
 
   snapshot(): AppSnapshot {
     return {
       subscriptions: structuredClone(this.state.subscriptions),
       recentItems: structuredClone(this.state.recentItems),
+      favorites: structuredClone(this.state.favorites),
       settings: structuredClone(this.state.settings),
       startedAt: this.startedAt
     }
@@ -108,6 +116,23 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     this.state.recentItems = this.state.recentItems.filter(
       (item) => !(item.subscriptionId === subscriptionId && item.id === itemId)
     )
+    await this.persistAndEmit()
+    return this.snapshot()
+  }
+
+  async addFavorite(item: MercariItem): Promise<AppSnapshot> {
+    if (this.state.favorites.some((favorite) => favorite.id === item.id)) return this.snapshot()
+    this.state.favorites.unshift({
+      id: item.id, name: item.name, price: item.price, thumbnail: item.thumbnail, url: item.url,
+      status: item.status, addedAt: Date.now(), lastCheckedAt: Date.now()
+    })
+    await this.persistAndEmit()
+    void this.checkFavorites()
+    return this.snapshot()
+  }
+
+  async removeFavorite(itemId: string): Promise<AppSnapshot> {
+    this.state.favorites = this.state.favorites.filter((favorite) => favorite.id !== itemId)
     await this.persistAndEmit()
     return this.snapshot()
   }
@@ -190,6 +215,37 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
         this.schedule(subscription.id, 0)
       }
     }
+  }
+
+  private async checkFavorites(): Promise<void> {
+    const details = this.source as ItemSource & Partial<ItemDetailSource>
+    if (!details.getItem || this.favoritesRunning || !this.state.favorites.length) return
+    this.favoritesRunning = true
+    try {
+      for (const favorite of this.state.favorites) {
+        const original: MercariItem = { ...favorite, detectedAt: Date.now(), subscriptionId: 'favorite', keyword: '收藏' }
+        try {
+          const latest = await details.getItem(original)
+          favorite.lastCheckedAt = Date.now()
+          if (!latest) continue
+          const priceChanged = latest.price !== favorite.price
+          const sold = latest.status !== favorite.status && /SOLD|SOLD_OUT/i.test(latest.status)
+          favorite.name = latest.name
+          favorite.price = latest.price
+          favorite.thumbnail = latest.thumbnail
+          favorite.status = latest.status
+          favorite.error = undefined
+          if (priceChanged || sold) {
+            favorite.lastChangedAt = Date.now()
+            this.emit('favoriteUpdate', { favorite: structuredClone(favorite), priceChanged, sold })
+          }
+        } catch (error) {
+          favorite.lastCheckedAt = Date.now()
+          favorite.error = error instanceof Error ? error.message : String(error)
+        }
+      }
+      await this.persistAndEmit()
+    } finally { this.favoritesRunning = false }
   }
 
   private async withAccessibleImages(items: MercariItem[]): Promise<MercariItem[]> {
