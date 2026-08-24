@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import type { AppSettings, MercariItem, Subscription } from '../shared/types'
+import type { AppSettings, MercariItem, QQBotKeyword, Subscription } from '../shared/types'
 
 export interface PersistedState {
   subscriptions: Subscription[]
@@ -32,6 +32,22 @@ export const defaultState: PersistedState = {
   seenBySubscription: {}
 }
 
+function normalizeQQKeywords(value: unknown): QQBotKeyword[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((entry) => {
+    if (typeof entry === 'string') return entry.trim() ? [{ keyword: entry.trim(), excludeKeywords: [] }] : []
+    if (!entry || typeof entry !== 'object') return []
+    const candidate = entry as Partial<QQBotKeyword>
+    if (typeof candidate.keyword !== 'string' || !candidate.keyword.trim()) return []
+    return [{
+      keyword: candidate.keyword.trim(),
+      excludeKeywords: Array.isArray(candidate.excludeKeywords)
+        ? candidate.excludeKeywords.filter((term): term is string => typeof term === 'string' && Boolean(term.trim())).map((term) => term.trim())
+        : []
+    }]
+  })
+}
+
 export class JsonStore implements StateStore {
   constructor(private readonly filePath: string) {}
 
@@ -44,7 +60,7 @@ export class JsonStore implements StateStore {
         settings: {
           ...defaultState.settings,
           ...parsed.settings,
-          qqBotTargets: (parsed.settings?.qqBotTargets ?? []).map((target) => ({ ...target, keywords: target.keywords ?? [] }))
+          qqBotTargets: (parsed.settings?.qqBotTargets ?? []).map((target) => ({ ...target, keywords: normalizeQQKeywords(target.keywords) }))
         },
         subscriptions: parsed.subscriptions ?? [],
         recentItems: parsed.recentItems ?? [],

@@ -46,6 +46,13 @@ export interface AppSettings {
 
 export type QQBotTargetType = 'group' | 'c2c'
 
+export interface QQBotKeyword {
+  /** The monitored search term. */
+  keyword: string
+  /** Product names containing any of these terms are not delivered to this target. */
+  excludeKeywords: string[]
+}
+
 export interface QQBotTarget {
   id: string
   type: QQBotTargetType
@@ -53,7 +60,7 @@ export interface QQBotTarget {
   label: string
   enabled: boolean
   /** Keyword subscriptions belonging to this QQ private chat or group. */
-  keywords: string[]
+  keywords: QQBotKeyword[]
 }
 
 export interface QQBotConfig {

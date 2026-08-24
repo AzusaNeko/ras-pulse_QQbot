@@ -294,25 +294,26 @@ app.whenReady().then(async () => {
     if (!currentTarget) return '目标初始化中，请稍后再试。'
     if (command.type === 'list') {
       return currentTarget.keywords.length
-        ? `你的监控关键词：\n${currentTarget.keywords.map((keyword, index) => `${index + 1}. ${keyword}`).join('\n')}`
+        ? `你的监控关键词：\n${currentTarget.keywords.map((entry, index) => `${index + 1}. ${entry.keyword}${entry.excludeKeywords.length ? `（屏蔽：${entry.excludeKeywords.join('、')}）` : ''}`).join('\n')}`
         : `你还没有订阅关键词。\n\n${qqKeywordHelp()}`
     }
     const normalized = command.keyword.toLocaleLowerCase()
     if (command.type === 'add') {
-      if (currentTarget.keywords.some((keyword) => keyword.toLocaleLowerCase() === normalized)) return `你已经订阅了“${command.keyword}”。`
-      const nextTargets = settings.qqBotTargets.map((item) => item.id === target.id ? { ...item, keywords: [...item.keywords, command.keyword] } : item)
+      if (currentTarget.keywords.some((entry) => entry.keyword.toLocaleLowerCase() === normalized)) return `你已经订阅了“${command.keyword}”。如需调整屏蔽词，请先移除后重新添加。`
+      const subscription = { keyword: command.keyword, excludeKeywords: command.excludeKeywords }
+      const nextTargets = settings.qqBotTargets.map((item) => item.id === target.id ? { ...item, keywords: [...item.keywords, subscription] } : item)
       await engine.updateSettings({ qqBotTargets: nextTargets })
       if (!engine.snapshot().subscriptions.some((subscription) => subscription.keyword.toLocaleLowerCase() === normalized)) {
         await engine.add({ keyword: command.keyword, initialDisplayCount: 2 })
       }
-      return `已添加关键词“${command.keyword}”。\n后续仅向当前${target.type === 'group' ? '群聊' : '私聊'}推送该关键词的上新商品。`
+      return `已添加关键词“${command.keyword}”。${command.excludeKeywords.length ? `\n已屏蔽：${command.excludeKeywords.join('、')}` : ''}\n后续仅向当前${target.type === 'group' ? '群聊' : '私聊'}推送该关键词的上新商品。`
     }
-    const matchingKeyword = currentTarget.keywords.find((keyword) => keyword.toLocaleLowerCase() === normalized)
+    const matchingKeyword = currentTarget.keywords.find((entry) => entry.keyword.toLocaleLowerCase() === normalized)
     if (!matchingKeyword) return `你尚未订阅“${command.keyword}”。`
     await engine.updateSettings({
-      qqBotTargets: settings.qqBotTargets.map((item) => item.id === target.id ? { ...item, keywords: item.keywords.filter((keyword) => keyword.toLocaleLowerCase() !== normalized) } : item)
+      qqBotTargets: settings.qqBotTargets.map((item) => item.id === target.id ? { ...item, keywords: item.keywords.filter((entry) => entry.keyword.toLocaleLowerCase() !== normalized) } : item)
     })
-    return `已移除关键词“${matchingKeyword}”，后续不会再向当前${target.type === 'group' ? '群聊' : '私聊'}推送相关商品。`
+    return `已移除关键词“${matchingKeyword.keyword}”，后续不会再向当前${target.type === 'group' ? '群聊' : '私聊'}推送相关商品。`
   })
   engine.on('snapshot', (snapshot) => broadcast({ type: 'snapshot', snapshot }))
   engine.on('newItem', (item) => {

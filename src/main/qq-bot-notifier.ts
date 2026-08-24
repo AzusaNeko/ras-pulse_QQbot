@@ -67,7 +67,7 @@ export class QQBotNotifier {
   async sendItem(item: MercariItem, settings: AppSettings): Promise<QQDeliveryResult> {
     const content = this.formatItem(item, settings)
     if (!settings.qqBotEnabled) throw new Error('请先开启 QQ 机器人推送')
-    const targets = this.enabledTargets(settings, item.keyword)
+    const targets = this.enabledTargets(settings, item)
     const secret = await this.requireSecret(settings)
     const client = this.getClient(settings.qqBotAppId, secret)
     // Text arrives first; image work must never delay a time-sensitive listing alert.
@@ -140,9 +140,13 @@ export class QQBotNotifier {
     return this.summarizeOutcomes(outcomes, targets)
   }
 
-  private enabledTargets(settings: AppSettings, keyword?: string): QQBotTarget[] {
-    const targets = settings.qqBotTargets.filter((target) => target.enabled && target.targetId.trim() && (!keyword || target.keywords.some((value) => value.toLocaleLowerCase() === keyword.toLocaleLowerCase())))
-    if (!targets.length && !keyword) throw new Error('请至少添加一个启用的 QQ 推送目标')
+  private enabledTargets(settings: AppSettings, item?: MercariItem): QQBotTarget[] {
+    const targets = settings.qqBotTargets.filter((target) => {
+      if (!target.enabled || !target.targetId.trim() || !item) return target.enabled && Boolean(target.targetId.trim())
+      const subscription = target.keywords.find((value) => value.keyword.toLocaleLowerCase() === item.keyword.toLocaleLowerCase())
+      return Boolean(subscription && !subscription.excludeKeywords.some((term) => item.name.toLocaleLowerCase().includes(term.toLocaleLowerCase())))
+    })
+    if (!targets.length && !item) throw new Error('请至少添加一个启用的 QQ 推送目标')
     return targets
   }
 
