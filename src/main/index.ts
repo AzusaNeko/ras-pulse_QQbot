@@ -7,6 +7,7 @@ import { MonitorEngine } from './monitor-engine'
 import { JsonStore } from './store'
 import { QQBotNotifier } from './qq-bot-notifier'
 import { SecretStore } from './secret-store'
+import { parseQQKeywordCommand, qqKeywordHelp } from './qq-keyword-command'
 
 const currentDir = fileURLToPath(new URL('.', import.meta.url))
 let window: BrowserWindow | null = null
@@ -284,6 +285,34 @@ app.whenReady().then(async () => {
     if (settings.qqBotTargets.some((existing) => existing.id === target.id)) return
     await engine.updateSettings({ qqBotTargets: [...settings.qqBotTargets, target] })
     console.info(`已自动发现 QQ 推送目标：${target.type}:${target.targetId}`)
+  }, async (target, content) => {
+    const command = parseQQKeywordCommand(content)
+    if (!command) return undefined
+    if (command.type === 'help') return qqKeywordHelp()
+    const settings = engine.snapshot().settings
+    const currentTarget = settings.qqBotTargets.find((item) => item.id === target.id)
+    if (!currentTarget) return '目标初始化中，请稍后再试。'
+    if (command.type === 'list') {
+      return currentTarget.keywords.length
+        ? `你的监控关键词：\n${currentTarget.keywords.map((keyword, index) => `${index + 1}. ${keyword}`).join('\n')}`
+        : `你还没有订阅关键词。\n\n${qqKeywordHelp()}`
+    }
+    const normalized = command.keyword.toLocaleLowerCase()
+    if (command.type === 'add') {
+      if (currentTarget.keywords.some((keyword) => keyword.toLocaleLowerCase() === normalized)) return `你已经订阅了“${command.keyword}”。`
+      const nextTargets = settings.qqBotTargets.map((item) => item.id === target.id ? { ...item, keywords: [...item.keywords, command.keyword] } : item)
+      await engine.updateSettings({ qqBotTargets: nextTargets })
+      if (!engine.snapshot().subscriptions.some((subscription) => subscription.keyword.toLocaleLowerCase() === normalized)) {
+        await engine.add({ keyword: command.keyword, initialDisplayCount: 2 })
+      }
+      return `已添加关键词“${command.keyword}”。\n后续仅向当前${target.type === 'group' ? '群聊' : '私聊'}推送该关键词的上新商品。`
+    }
+    const matchingKeyword = currentTarget.keywords.find((keyword) => keyword.toLocaleLowerCase() === normalized)
+    if (!matchingKeyword) return `你尚未订阅“${command.keyword}”。`
+    await engine.updateSettings({
+      qqBotTargets: settings.qqBotTargets.map((item) => item.id === target.id ? { ...item, keywords: item.keywords.filter((keyword) => keyword.toLocaleLowerCase() !== normalized) } : item)
+    })
+    return `已移除关键词“${matchingKeyword}”，后续不会再向当前${target.type === 'group' ? '群聊' : '私聊'}推送相关商品。`
   })
   engine.on('snapshot', (snapshot) => broadcast({ type: 'snapshot', snapshot }))
   engine.on('newItem', (item) => {

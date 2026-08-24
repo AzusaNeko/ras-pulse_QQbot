@@ -140,7 +140,7 @@ function QQBotPanel({ config, onSave, onTest }: {
     setTargets((items) => items.map((item) => item.id === id ? { ...item, ...patch } : item))
   }
   const addTarget = (): void => setTargets((items) => [...items, {
-    id: crypto.randomUUID(), type: 'group', targetId: '', label: '', enabled: true
+    id: crypto.randomUUID(), type: 'group', targetId: '', label: '', enabled: true, keywords: []
   }])
   const save = async (): Promise<void> => {
     setBusy(true)
@@ -167,6 +167,7 @@ function QQBotPanel({ config, onSave, onTest }: {
       </div>)}
       {!targets.length && <div className="qq-empty">保存开启后，私聊机器人或在群内 @ 机器人一次，软件会自动发现并添加对应目标。</div>}
     </div>
+    <p className="qq-command-hint">机器人指令：<code>添加关键词 相机</code>、<code>移除关键词 相机</code>、<code>关键词列表</code>。群聊关键词将作用于该群，私聊关键词仅作用于该用户。</p>
     <div className="qq-actions"><button className="secondary-button" type="button" disabled={busy} onClick={() => void save()}>{busy ? '保存中…' : '保存 QQ 配置'}</button><button className="secondary-button" type="button" disabled={busy} onClick={() => void onTest()}>发送 QQ 测试消息</button></div>
   </section>
 }

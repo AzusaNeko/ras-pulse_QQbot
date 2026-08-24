@@ -14,7 +14,8 @@ export class QQBotNotifier {
 
   constructor(
     private readonly secrets: SecretStore,
-    private readonly onTargetDiscovered: (target: QQBotTarget) => Promise<void>
+    private readonly onTargetDiscovered: (target: QQBotTarget) => Promise<void>,
+    private readonly onMessageReceived: (target: QQBotTarget, content: string) => Promise<string | undefined>
   ) {}
 
   /** Starts the WebSocket gateway so QQ reports the bot as connected and targets can be discovered. */
@@ -39,8 +40,18 @@ export class QQBotNotifier {
         type: target.scope,
         targetId: target.targetId,
         label: target.scope === 'group' ? '自动发现的 QQ 群' : '自动发现的 QQ 私聊',
-        enabled: true
+        enabled: true,
+        keywords: []
       })
+      const response = await this.onMessageReceived({
+        id: `${target.scope}:${target.targetId}`,
+        type: target.scope,
+        targetId: target.targetId,
+        label: target.scope === 'group' ? '自动发现的 QQ 群' : '自动发现的 QQ 私聊',
+        enabled: true,
+        keywords: []
+      }, message.content)
+      if (response) await client.sendText(target, response)
     })
     void client.start().catch((error) => {
       if (this.receivingKey === key) this.receivingKey = ''
@@ -56,7 +67,7 @@ export class QQBotNotifier {
   async sendItem(item: MercariItem, settings: AppSettings): Promise<QQDeliveryResult> {
     const content = this.formatItem(item, settings)
     if (!settings.qqBotEnabled) throw new Error('请先开启 QQ 机器人推送')
-    const targets = this.enabledTargets(settings)
+    const targets = this.enabledTargets(settings, item.keyword)
     const secret = await this.requireSecret(settings)
     const client = this.getClient(settings.qqBotAppId, secret)
     // Text arrives first; image work must never delay a time-sensitive listing alert.
@@ -129,9 +140,9 @@ export class QQBotNotifier {
     return this.summarizeOutcomes(outcomes, targets)
   }
 
-  private enabledTargets(settings: AppSettings): QQBotTarget[] {
-    const targets = settings.qqBotTargets.filter((target) => target.enabled && target.targetId.trim())
-    if (!targets.length) throw new Error('请至少添加一个启用的 QQ 推送目标')
+  private enabledTargets(settings: AppSettings, keyword?: string): QQBotTarget[] {
+    const targets = settings.qqBotTargets.filter((target) => target.enabled && target.targetId.trim() && (!keyword || target.keywords.some((value) => value.toLocaleLowerCase() === keyword.toLocaleLowerCase())))
+    if (!targets.length && !keyword) throw new Error('请至少添加一个启用的 QQ 推送目标')
     return targets
   }
 

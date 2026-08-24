@@ -41,7 +41,11 @@ export class JsonStore implements StateStore {
       return {
         ...defaultState,
         ...parsed,
-        settings: { ...defaultState.settings, ...parsed.settings },
+        settings: {
+          ...defaultState.settings,
+          ...parsed.settings,
+          qqBotTargets: (parsed.settings?.qqBotTargets ?? []).map((target) => ({ ...target, keywords: target.keywords ?? [] }))
+        },
         subscriptions: parsed.subscriptions ?? [],
         recentItems: parsed.recentItems ?? [],
         seenBySubscription: parsed.seenBySubscription ?? {}

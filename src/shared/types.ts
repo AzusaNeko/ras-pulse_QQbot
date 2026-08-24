@@ -52,6 +52,8 @@ export interface QQBotTarget {
   targetId: string
   label: string
   enabled: boolean
+  /** Keyword subscriptions belonging to this QQ private chat or group. */
+  keywords: string[]
 }
 
 export interface QQBotConfig {
