@@ -16,6 +16,7 @@ const MAX_SEEN_IDS = 500
 const STALLED_CHECK_GRACE_MS = 15_000
 /** Allows for Mercari/index clock skew without treating old search results as new. */
 const NEW_LISTING_CLOCK_SKEW_MS = 2 * 60_000
+const BASELINE_RETRY_DELAY_MS = 5_000
 
 function clampInitialDisplayCount(value?: number): number {
   return Math.min(5, Math.max(1, Math.trunc(value ?? 2)))
@@ -31,6 +32,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
   private state!: PersistedState
   private readonly timers = new Map<string, NodeJS.Timeout>()
   private readonly running = new Set<string>()
+  private readonly baselineRetryAt = new Map<string, number>()
   private healthTimer: NodeJS.Timeout | undefined
   private favoriteTimer: NodeJS.Timeout | undefined
   private favoritesRunning = false
@@ -124,7 +126,9 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       this.state.recentItems = this.state.recentItems.filter((item) => item.subscriptionId !== id)
     }
     delete this.state.seenBySubscription[id]
+    delete this.state.baselineReadyBySubscription[id]
     delete this.state.observedUpdatesBySubscription[id]
+    this.baselineRetryAt.delete(id)
     const timer = this.timers.get(id)
     if (timer) clearTimeout(timer)
     this.timers.delete(id)
@@ -197,6 +201,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       subscription.error = undefined
 
       if (prior) {
+        await this.retryMissingBaseline(id, subscription, items, manual)
         const unseenItems = items.filter((candidate) => !seen.has(candidate.id))
         const previousUpdates = this.state.observedUpdatesBySubscription[id] ?? {}
         const editedItems = subscription.monitorUpdates
@@ -245,10 +250,11 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
         const nextSeen = [...new Set([...items.map((item) => item.id), ...seen])].slice(0, MAX_SEEN_IDS)
         this.state.seenBySubscription[id] = nextSeen
         this.recordObservedUpdates(id, items, nextSeen)
-        const baselineItems = (await this.withAccessibleImages(this.selectBaselineItems(
+        const baselineCandidates = this.selectBaselineItems(
           items,
           clampInitialDisplayCount(subscription.initialDisplayCount)
-        )))
+        )
+        const baselineItems = (await this.withAccessibleImages(baselineCandidates))
           // The detail endpoint can reveal that a listing sold between search
           // and enrichment. Never surface that stale result in a new baseline.
           .filter((item) => !isSoldMercariStatus(item.status))
@@ -258,6 +264,11 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
           ...baselineItems,
           ...this.state.recentItems.filter((old) => !(old.subscriptionId === subscription.id && baselineIds.has(old.id)))
         ])
+        // If thumbnail validation had a transient failure, all item IDs are
+        // still marked seen above. Keep a retry marker so the first display is
+        // eventually populated without falsely emitting an “up new” alert.
+        this.state.baselineReadyBySubscription[id] = baselineItems.length > 0 || baselineCandidates.length === 0
+        if (!this.state.baselineReadyBySubscription[id]) this.baselineRetryAt.set(id, Date.now() + BASELINE_RETRY_DELAY_MS)
       }
     } catch (error) {
       subscription.consecutiveErrors += 1
@@ -378,6 +389,31 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
    */
   private selectBaselineItems(items: MercariItem[], count: number): MercariItem[] {
     return items.filter((item) => !isSoldMercariStatus(item.status)).slice(0, count)
+  }
+
+  private async retryMissingBaseline(id: string, subscription: Subscription, items: MercariItem[], manual: boolean): Promise<void> {
+    if (this.state.baselineReadyBySubscription[id]) return
+    const nextRetry = this.baselineRetryAt.get(id) ?? 0
+    if (!manual && Date.now() < nextRetry) return
+    const candidates = this.selectBaselineItems(items, clampInitialDisplayCount(subscription.initialDisplayCount))
+    if (!candidates.length) {
+      this.state.baselineReadyBySubscription[id] = true
+      return
+    }
+    const baselineItems = (await this.withAccessibleImages(candidates))
+      .filter((item) => !isSoldMercariStatus(item.status))
+      .map((item) => ({ ...item, discoveryType: 'baseline' as const }))
+    if (!baselineItems.length) {
+      this.baselineRetryAt.set(id, Date.now() + BASELINE_RETRY_DELAY_MS)
+      return
+    }
+    const baselineIds = new Set(baselineItems.map((item) => item.id))
+    this.state.recentItems = this.retainRecentItems([
+      ...baselineItems,
+      ...this.state.recentItems.filter((old) => !(old.subscriptionId === subscription.id && baselineIds.has(old.id)))
+    ])
+    this.state.baselineReadyBySubscription[id] = true
+    this.baselineRetryAt.delete(id)
   }
 
   private recordObservedUpdates(subscriptionId: string, items: MercariItem[], seenIds: string[]): void {

@@ -166,6 +166,25 @@ describe('MonitorEngine baseline', () => {
     engine.stop()
   })
 
+  it('retries an empty initial baseline without announcing old items as new', async () => {
+    const source = new FakeSource()
+    const engine = new MonitorEngine(source, new MemoryStore())
+    const notified: MercariItem[] = []
+    source.items = [item('m1')]
+    source.inaccessible.add('m1')
+    await engine.start()
+    engine.on('newItem', (value) => notified.push(value))
+    const snapshot = await engine.add({ keyword: '相机', initialDisplayCount: 1 })
+    await engine.checkNow(snapshot.subscriptions[0].id)
+    expect(engine.snapshot().recentItems).toHaveLength(0)
+
+    source.inaccessible.delete('m1')
+    await engine.checkNow(snapshot.subscriptions[0].id)
+    expect(engine.snapshot().recentItems[0]).toMatchObject({ id: 'm1', discoveryType: 'baseline' })
+    expect(notified).toHaveLength(0)
+    engine.stop()
+  })
+
   it('remembers delayed old search results without announcing them as new', async () => {
     const source = new FakeSource()
     const engine = new MonitorEngine(source, new MemoryStore())

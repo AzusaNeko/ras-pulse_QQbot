@@ -9,6 +9,8 @@ export interface PersistedState {
   favorites: FavoriteItem[]
   settings: AppSettings
   seenBySubscription: Record<string, string[]>
+  /** Whether this subscription has successfully rendered its first baseline. */
+  baselineReadyBySubscription: Record<string, boolean>
   observedUpdatesBySubscription: Record<string, Record<string, ObservedListing>>
 }
 
@@ -43,6 +45,7 @@ export const defaultState: PersistedState = {
     qqBotTargets: []
   },
   seenBySubscription: {},
+  baselineReadyBySubscription: {},
   observedUpdatesBySubscription: {}
 }
 
@@ -114,6 +117,7 @@ export class JsonStore implements StateStore {
         recentItems: (parsed.recentItems ?? []).map((item) => ({ ...normalizeStoredItem(item), isAuction: typeof item.isAuction === 'boolean' ? item.isAuction : undefined })),
         favorites: (parsed.favorites ?? []).map((item) => ({ ...normalizeStoredItem(item), isAuction: typeof item.isAuction === 'boolean' ? item.isAuction : undefined })),
         seenBySubscription: parsed.seenBySubscription ?? {},
+        baselineReadyBySubscription: parsed.baselineReadyBySubscription ?? {},
         observedUpdatesBySubscription: normalizeObservedUpdates(parsed.observedUpdatesBySubscription)
       }
     } catch (error) {
