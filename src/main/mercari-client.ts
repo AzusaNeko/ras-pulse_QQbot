@@ -84,7 +84,7 @@ export function parseSearchResponse(
       subscriptionId: subscription.id,
       keyword: subscription.keyword
     }]
-  })
+  }).sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
 }
 
 export class MercariClient implements ItemSource {

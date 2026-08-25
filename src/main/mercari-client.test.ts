@@ -53,6 +53,15 @@ describe('Mercari client', () => {
     })
   })
 
+  it('sorts results by listing creation time when the API response is out of order', () => {
+    const result = parseSearchResponse({ items: [
+      { id: 'older', name: '较早商品', price: 1_000, created: 100 },
+      { id: 'newer', name: '较新商品', price: 1_000, created: 200 }
+    ] }, { id: 'watch-1', keyword: '相机' }, 1234)
+
+    expect(result.map((item) => item.id)).toEqual(['newer', 'older'])
+  })
+
   it('maps Mercari Shops results to the Shops product route', () => {
     const result = parseSearchResponse({ items: [{
       id: shopsItem.id,
