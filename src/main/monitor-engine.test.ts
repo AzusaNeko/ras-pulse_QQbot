@@ -149,6 +149,23 @@ describe('MonitorEngine baseline', () => {
     engine.stop()
   })
 
+  it('prefers on-sale listings over sold listings when creating a baseline', async () => {
+    const source = new FakeSource()
+    const engine = new MonitorEngine(source, new MemoryStore())
+    source.items = [
+      { ...item('sold-newest'), createdAt: 5, status: 'ITEM_STATUS_SOLD_OUT' },
+      { ...item('sold-next'), createdAt: 4, status: 'ITEM_STATUS_SOLD_OUT' },
+      { ...item('active-one'), createdAt: 3 },
+      { ...item('active-two'), createdAt: 2 }
+    ]
+    await engine.start()
+    const snapshot = await engine.add({ keyword: '相机', initialDisplayCount: 3 })
+    await engine.checkNow(snapshot.subscriptions[0].id)
+
+    expect(engine.snapshot().recentItems.map((value) => value.id)).toEqual(['active-one', 'active-two', 'sold-newest'])
+    engine.stop()
+  })
+
   it('remembers delayed old search results without announcing them as new', async () => {
     const source = new FakeSource()
     const engine = new MonitorEngine(source, new MemoryStore())

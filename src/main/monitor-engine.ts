@@ -247,8 +247,10 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
         const nextSeen = [...new Set([...items.map((item) => item.id), ...seen])].slice(0, MAX_SEEN_IDS)
         this.state.seenBySubscription[id] = nextSeen
         this.recordObservedUpdates(id, items, nextSeen)
-        const baselineItems = (await this.withAccessibleImages(items
-          .slice(0, clampInitialDisplayCount(subscription.initialDisplayCount))))
+        const baselineItems = (await this.withAccessibleImages(this.selectBaselineItems(
+          items,
+          clampInitialDisplayCount(subscription.initialDisplayCount)
+        )))
           .map((item) => ({ ...item, discoveryType: 'baseline' as const }))
         const baselineIds = new Set(baselineItems.map((item) => item.id))
         this.state.recentItems = this.retainRecentItems([
@@ -366,6 +368,18 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     if (!item.createdAt) return true
     const createdAt = item.createdAt > 10_000_000_000 ? item.createdAt : item.createdAt * 1_000
     return createdAt >= subscription.createdAt - NEW_LISTING_CLOCK_SKEW_MS
+  }
+
+  /**
+   * Baselines include sold listings for completeness, but a re-added keyword
+   * should not look like every result is unavailable when active listings are
+   * present. Prefer on-sale records, then use sold records only to fill the
+   * user-selected first-display count.
+   */
+  private selectBaselineItems(items: MercariItem[], count: number): MercariItem[] {
+    const onSale = items.filter((item) => !isSoldMercariStatus(item.status))
+    if (onSale.length >= count) return onSale.slice(0, count)
+    return [...onSale, ...items.filter((item) => isSoldMercariStatus(item.status)).slice(0, count - onSale.length)]
   }
 
   private recordObservedUpdates(subscriptionId: string, items: MercariItem[], seenIds: string[]): void {
