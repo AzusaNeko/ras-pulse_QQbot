@@ -136,6 +136,25 @@ function AddMonitor({ defaultInterval, onAdd }: { defaultInterval: number; onAdd
   )
 }
 
+function RemoveSubscriptionDialog({ subscription, onCancel, onRemove }: {
+  subscription: Subscription
+  onCancel: () => void
+  onRemove: (removeRelatedItems: boolean) => void
+}): JSX.Element {
+  return <div className="dialog-backdrop" role="presentation">
+    <section className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="remove-subscription-title">
+      <p className="eyebrow">取消监控</p>
+      <h2 id="remove-subscription-title">取消“{subscription.keyword}”的监控？</h2>
+      <p>你可以仅停止该关键词的监控，或同时清除它已有的商品动态。此操作不会影响其他关键词。</p>
+      <div className="confirm-dialog-actions">
+        <button className="text-button" type="button" onClick={onCancel}>返回</button>
+        <button className="secondary-button" type="button" onClick={() => onRemove(false)}>仅取消监控</button>
+        <button className="danger-button" type="button" onClick={() => onRemove(true)}>取消并清理动态</button>
+      </div>
+    </section>
+  </div>
+}
+
 function QQBotPanel({ config, onSave, onTest, onSyncPanels }: {
   config: QQBotConfig
   onSave: (value: { enabled: boolean; appId: string; targets: QQBotTarget[]; appSecret?: string }) => Promise<void>
@@ -195,6 +214,7 @@ export function App(): JSX.Element {
   const [notice, setNotice] = useState('')
   const [qqConfig, setQQConfig] = useState<QQBotConfig | null>(null)
   const [itemFilter, setItemFilter] = useState<'all' | string>('all')
+  const [pendingRemoval, setPendingRemoval] = useState<Subscription | null>(null)
   const [, forceClock] = useState(0)
 
   useEffect(() => {
@@ -273,9 +293,7 @@ export function App(): JSX.Element {
                 onCheck={(id) => void action(window.mercariPulse.checkNow(id))}
                 onDelete={(id) => {
                   const subscription = snapshot.subscriptions.find((value) => value.id === id)
-                  if (!confirm(`确认取消“${subscription?.keyword ?? '该关键词'}”的监控吗？`)) return
-                  const removeRelatedItems = confirm('是否同时剔除该关键词相关的商品动态？\n\n确定：同时删除商品动态\n取消：保留商品动态')
-                  void action(window.mercariPulse.removeSubscription(id, removeRelatedItems))
+                  if (subscription) setPendingRemoval(subscription)
                 }} />)}
               {!snapshot.subscriptions.length && <div className="empty-state"><b>还没有监控任务</b><span>在上方输入关键词，第一次检查会建立商品基线。</span></div>}
             </div>
@@ -325,6 +343,11 @@ export function App(): JSX.Element {
           <div className="notice-box"><b>关于 1 秒延迟</b><p>应用每约 1 秒发起一次检查，但最终发现延迟还取决于 Mercari 搜索索引更新时间、网络 RTT 和接口限流。失败时会自动退避，恢复后回到设定间隔。</p></div>
         </>}
       </main>
+      {pendingRemoval && <RemoveSubscriptionDialog subscription={pendingRemoval} onCancel={() => setPendingRemoval(null)} onRemove={(removeRelatedItems) => {
+        const subscription = pendingRemoval
+        setPendingRemoval(null)
+        void action(window.mercariPulse.removeSubscription(subscription.id, removeRelatedItems))
+      }} />}
       {notice && <div className="toast">{notice}</div>}
     </div>
   )
