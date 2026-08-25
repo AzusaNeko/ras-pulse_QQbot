@@ -186,12 +186,10 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     subscription.lastCheckedAt = Date.now()
     this.emitSnapshot()
     try {
-      // Mercari search occasionally returns records out of order despite the
-      // requested created-time sort. Keep the baseline and new-item order
-      // deterministic before applying the first-display limit.
       const prior = this.state.seenBySubscription[id]
-      const items = (await this.source.search(subscription, { includeSold: !prior }))
-        .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
+      // Preserve Mercari's returned “newest” ranking. Its `created` field can
+      // reflect the original listing time rather than the web-search position.
+      const items = await this.source.search(subscription, { includeSold: !prior })
       const seen = new Set(prior ?? [])
       subscription.status = subscription.enabled ? 'watching' : 'paused'
       subscription.lastSuccessAt = Date.now()

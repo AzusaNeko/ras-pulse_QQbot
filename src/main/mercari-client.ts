@@ -91,7 +91,7 @@ export function parseSearchResponse(
       subscriptionId: subscription.id,
       keyword: subscription.keyword
     }]
-  }).sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
+  })
 }
 
 export class MercariClient implements ItemSource {
@@ -102,7 +102,10 @@ export class MercariClient implements ItemSource {
     const batches = await Promise.all(statusGroups.map((statuses) => this.searchByStatus(subscription, statuses)))
     const unique = new Map<string, MercariItem>()
     for (const item of batches.flat()) unique.set(item.id, item)
-    return [...unique.values()].sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
+    // The endpoint's order is the same ranking shown by Mercari's “newest”
+    // web search. `created` can be the original listing time for a subsequently
+    // edited/re-indexed item, so sorting it again would incorrectly bury it.
+    return [...unique.values()]
   }
 
   private async searchByStatus(subscription: Subscription, statuses: string[]): Promise<MercariItem[]> {

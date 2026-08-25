@@ -40,7 +40,7 @@ function item(id: string): MercariItem {
 }
 
 describe('MonitorEngine baseline', () => {
-  it.each([1, 2, 3, 4, 5])('shows the newest %i initial listings when the source response is out of order', async (initialDisplayCount) => {
+  it.each([1, 2, 3, 4, 5])('preserves Mercari ranking for the %i initial listings', async (initialDisplayCount) => {
     const source = new FakeSource()
     const engine = new MonitorEngine(source, new MemoryStore())
     source.items = [
@@ -57,7 +57,7 @@ describe('MonitorEngine baseline', () => {
     await engine.checkNow(snapshot.subscriptions[0].id)
 
     expect(engine.snapshot().recentItems.map((value) => value.id)).toEqual(
-      ['m6', 'm5', 'm4', 'm3', 'm2'].slice(0, initialDisplayCount)
+      ['m2', 'm5', 'm1', 'm6', 'm3'].slice(0, initialDisplayCount)
     )
     expect(source.includeSoldRequests).toContain(true)
     engine.stop()

@@ -53,13 +53,13 @@ describe('Mercari client', () => {
     })
   })
 
-  it('sorts results by listing creation time when the API response is out of order', () => {
+  it('preserves the ranking order returned by Mercari search', () => {
     const result = parseSearchResponse({ items: [
       { id: 'older', name: '较早商品', price: 1_000, created: 100 },
       { id: 'newer', name: '较新商品', price: 1_000, created: 200 }
     ] }, { id: 'watch-1', keyword: '相机' }, 1234)
 
-    expect(result.map((item) => item.id)).toEqual(['newer', 'older'])
+    expect(result.map((item) => item.id)).toEqual(['older', 'newer'])
   })
 
   it('keeps Mercari item update timestamps from search results', () => {
