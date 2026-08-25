@@ -303,7 +303,7 @@ app.whenReady().then(async () => {
     console.info(`已自动发现 QQ 推送目标：${target.type}:${target.targetId}`)
   }, async (target, content) => {
     const command = parseQQKeywordCommand(content)
-    if (!command) return undefined
+    if (!command) return '指令错误 可以先在帮助中查看指令'
     if (command.type === 'help') return qqKeywordHelp()
     const settings = engine.snapshot().settings
     const currentTarget = settings.qqBotTargets.find((item) => item.id === target.id)
@@ -334,6 +334,19 @@ app.whenReady().then(async () => {
     }
     const matchingKeyword = currentTarget.keywords.find((entry) => entry.keyword.toLocaleLowerCase() === normalized)
     if (!matchingKeyword) return `你尚未订阅“${command.keyword}”。`
+    if (command.type === 'add-exclude') {
+      const existing = new Set(matchingKeyword.excludeKeywords.map((term) => term.toLocaleLowerCase()))
+      const additions = command.excludeKeywords.filter((term) => !existing.has(term.toLocaleLowerCase()))
+      if (!additions.length) return `“${matchingKeyword.keyword}”中的这些屏蔽词已存在。`
+      await engine.updateSettings({
+        qqBotTargets: settings.qqBotTargets.map((item) => item.id === target.id
+          ? { ...item, keywords: item.keywords.map((entry) => entry.keyword.toLocaleLowerCase() === normalized
+            ? { ...entry, excludeKeywords: [...entry.excludeKeywords, ...additions] }
+            : entry) }
+          : item)
+      })
+      return `已为“${matchingKeyword.keyword}”添加屏蔽词：${additions.join('、')}。`
+    }
     await engine.updateSettings({
       qqBotTargets: settings.qqBotTargets.map((item) => item.id === target.id ? { ...item, keywords: item.keywords.filter((entry) => entry.keyword.toLocaleLowerCase() !== normalized) } : item)
     })

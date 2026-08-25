@@ -136,12 +136,13 @@ export class QQBotNotifier {
     const panel = {
       items: [
         { type: 'command', name: '/添加关键词 ', desc: '选中后填写关键词' },
+        { type: 'command', name: '/关键词 添加屏蔽词 ', desc: '例：相机 添加屏蔽词 故障' },
         { type: 'command', name: '/移除关键词 ', desc: '选中后填写关键词' },
         { type: 'command', name: '/关键词列表', desc: '查看我的订阅' },
         { type: 'command', name: '/清除全部', desc: '清空前会要求确认' },
         { type: 'command', name: '/帮助', desc: '查看使用说明' }
       ],
-      remark: 'ras-pulse-command-panel-v1'
+      remark: 'ras-pulse-command-panel-v2'
     }
     await client.api.put('/v2/menu', {
       menu: {

@@ -67,6 +67,15 @@ function SubscriptionCard({ item, fastTaken, onChange, onDelete, onCheck }: {
   onDelete: (id: string) => void
   onCheck: (id: string) => void
 }): JSX.Element {
+  const addExclude = (): void => {
+    const raw = prompt(`为“${item.keyword}”添加屏蔽词（可用逗号、顿号分隔）：`)
+    if (!raw?.trim()) return
+    const existing = item.excludeKeyword.split(/[，,、\n]/).map((term) => term.trim()).filter(Boolean)
+    const known = new Set(existing.map((term) => term.toLocaleLowerCase()))
+    const additions = raw.split(/[，,、\n]/).map((term) => term.trim()).filter((term) => term && !known.has(term.toLocaleLowerCase()))
+    if (!additions.length) return
+    onChange(item.id, { excludeKeyword: [...existing, ...additions].join('、') })
+  }
   return (
     <article className={`subscription-card status-${item.status}`}>
       <div className="subscription-main">
@@ -83,6 +92,7 @@ function SubscriptionCard({ item, fastTaken, onChange, onDelete, onCheck }: {
         </div>
       </div>
       <div className="card-actions">
+        <button className="icon-button" title="添加屏蔽词" onClick={addExclude}>⊘</button>
         <button className="icon-button" title="立即检查" onClick={() => onCheck(item.id)}>↻</button>
         <label className="switch" title={item.enabled ? '暂停' : '启用'}>
           <input type="checkbox" checked={item.enabled} onChange={(event) => onChange(item.id, { enabled: event.target.checked, status: event.target.checked ? 'watching' : 'paused' })} />
@@ -218,7 +228,7 @@ function QQBotPanel({ config, onSave, onTest, onSyncPanels }: {
       </div>)}
       {!targets.length && <div className="qq-empty">保存开启后，私聊机器人或在群内 @ 机器人一次，软件会自动发现并添加对应目标。</div>}
     </div>
-    <p className="qq-command-hint">机器人指令：<code>添加关键词 相机</code>、<code>添加关键词 バンドリ 屏蔽 バンドリエール、バンドリング</code>、<code>移除关键词 相机</code>、<code>关键词列表</code>。屏蔽词仅作用于该私聊或群聊。</p>
+    <p className="qq-command-hint">机器人指令：<code>添加关键词 相机</code>、<code>バンドリ 添加屏蔽词 バンドリング</code>、<code>移除关键词 相机</code>、<code>关键词列表</code>。屏蔽词仅作用于该私聊或群聊。</p>
     <div className="qq-actions"><button className="secondary-button" type="button" disabled={busy} onClick={() => void save()}>{busy ? '保存中…' : '保存 QQ 配置'}</button><button className="secondary-button" type="button" disabled={busy} onClick={() => void onSyncPanels()}>同步 QQ 菜单与指令</button><button className="secondary-button" type="button" disabled={busy} onClick={() => void onTest()}>发送 QQ 测试消息</button></div>
   </section>
 }
