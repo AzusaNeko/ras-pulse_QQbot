@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { AppSettings, FavoriteItem, MercariItem, QQBotKeyword, Subscription } from '../shared/types'
+import { buildMercariItemUrl, isMercariShopsItem, MERCARI_SHOPS_ITEM_TYPE } from './mercari-item-url'
 
 export interface PersistedState {
   subscriptions: Subscription[]
@@ -50,6 +51,15 @@ function normalizeQQKeywords(value: unknown): QQBotKeyword[] {
   })
 }
 
+function normalizeStoredItem<T extends MercariItem | FavoriteItem>(item: T): T {
+  const itemType = item.itemType ?? (isMercariShopsItem(item) ? MERCARI_SHOPS_ITEM_TYPE : undefined)
+  return {
+    ...item,
+    itemType,
+    url: buildMercariItemUrl({ ...item, itemType })
+  }
+}
+
 export class JsonStore implements StateStore {
   constructor(private readonly filePath: string) {}
 
@@ -65,8 +75,8 @@ export class JsonStore implements StateStore {
           qqBotTargets: (parsed.settings?.qqBotTargets ?? []).map((target) => ({ ...target, keywords: normalizeQQKeywords(target.keywords) }))
         },
         subscriptions: parsed.subscriptions ?? [],
-        recentItems: (parsed.recentItems ?? []).map((item) => ({ ...item, isAuction: typeof item.isAuction === 'boolean' ? item.isAuction : undefined })),
-        favorites: (parsed.favorites ?? []).map((item) => ({ ...item, isAuction: typeof item.isAuction === 'boolean' ? item.isAuction : undefined })),
+        recentItems: (parsed.recentItems ?? []).map((item) => ({ ...normalizeStoredItem(item), isAuction: typeof item.isAuction === 'boolean' ? item.isAuction : undefined })),
+        favorites: (parsed.favorites ?? []).map((item) => ({ ...normalizeStoredItem(item), isAuction: typeof item.isAuction === 'boolean' ? item.isAuction : undefined })),
         seenBySubscription: parsed.seenBySubscription ?? {}
       }
     } catch (error) {
