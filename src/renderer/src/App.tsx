@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent, type JSX, type ReactNode } from 'react'
 import type { AppSnapshot, FavoriteItem, MercariItem, MonitorStatus, NewSubscription, QQBotConfig, QQBotTarget, Subscription } from '../../shared/types'
+import { isSoldMercariStatus } from '../../shared/mercari-status'
 
 const statusLabels: Record<MonitorStatus, string> = {
   watching: '监听中', paused: '已暂停', checking: '检查中', backoff: '重试中', error: '异常'
@@ -34,7 +35,7 @@ function sameQQTargets(left: QQBotTarget[], right: QQBotTarget[]): boolean {
 function ItemCard({ item, favorite, onFavorite, onDelete }: { item: MercariItem; favorite: boolean; onFavorite: (item: MercariItem) => void; onDelete: (item: MercariItem) => void }): JSX.Element | null {
   const openItem = (): void => { void window.mercariPulse.openExternal(item.url) }
   const [imageStatus, setImageStatus] = useState<'loading' | 'ready' | 'failed'>('loading')
-  const sold = /SOLD|SOLD_OUT/i.test(item.status)
+  const sold = isSoldMercariStatus(item.status)
   if (!item.thumbnail || imageStatus === 'failed') return null
   return (
     <article className={`item-card ${imageStatus === 'ready' ? '' : 'item-card-loading'}`} role="button" tabIndex={imageStatus === 'ready' ? 0 : -1} aria-hidden={imageStatus !== 'ready'} onClick={imageStatus === 'ready' ? openItem : undefined} onKeyDown={(event) => { if (imageStatus === 'ready' && event.key === 'Enter') openItem() }}>
@@ -89,7 +90,7 @@ function SubscriptionCard({ item, fastTaken, onChange, onDelete, onCheck }: {
 }
 
 function FavoriteCard({ item, onRemove }: { item: FavoriteItem; onRemove: (id: string) => void }): JSX.Element {
-  const sold = /SOLD|SOLD_OUT/i.test(item.status)
+  const sold = isSoldMercariStatus(item.status)
   const priceChange = item.previousPrice == null ? undefined : item.price - item.previousPrice
   const priceChangeLabel = priceChange == null || priceChange === 0 ? undefined : priceChange < 0 ? '降价' : '涨价'
   return <article className={`favorite-card ${sold ? 'sold' : ''}`} onClick={() => void window.mercariPulse.openExternal(item.url)}>

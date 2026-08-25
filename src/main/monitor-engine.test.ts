@@ -163,6 +163,21 @@ describe('MonitorEngine baseline', () => {
     engine.stop()
   })
 
+  it('treats Mercari trading status as sold for a favorite', async () => {
+    const source = new FakeSource()
+    const engine = new MonitorEngine(source, new MemoryStore())
+    const updates: Array<{ sold: boolean }> = []
+    source.details.set('m1', { ...item('m1'), status: 'trading' })
+    await engine.start()
+    engine.on('favoriteUpdate', (update) => updates.push({ sold: update.sold }))
+
+    await engine.addFavorite(item('m1'))
+
+    await vi.waitFor(() => expect(engine.snapshot().favorites[0].status).toBe('trading'))
+    expect(updates).toEqual([{ sold: true }])
+    engine.stop()
+  })
+
   it('retains up to 200 records per keyword and preserves a keyword\'s final record during global cleanup', async () => {
     const store = new MemoryStore()
     const records = (subscriptionId: string, count: number): MercariItem[] => Array.from({ length: count }, (_, index) => ({

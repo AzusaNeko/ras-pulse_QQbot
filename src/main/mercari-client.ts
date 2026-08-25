@@ -187,7 +187,7 @@ export class MercariClient implements ItemSource {
   }
 
   async getItem(item: MercariItem): Promise<MercariItem | undefined> {
-    if (isMercariShopsItem(item)) return item
+    if (isMercariShopsItem(item)) return this.getShopsItem(item)
     const url = `https://api.mercari.jp/items/get?id=${encodeURIComponent(item.id)}&include_auction=true`
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 8_000)
@@ -210,6 +210,34 @@ export class MercariClient implements ItemSource {
         isAuction: Boolean(detail.auction_info ?? detail.auctionInfo ?? detail.auction ?? detail.isAuction),
         detectedAt: Date.now()
       }
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
+
+  /** Shops listings do not support the ordinary item-detail endpoint. */
+  private async getShopsItem(item: MercariItem): Promise<MercariItem> {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 8_000)
+    try {
+      const response = await fetch(item.url, {
+        signal: controller.signal,
+        headers: { accept: 'text/html,application/xhtml+xml', 'user-agent': 'python-mercari' }
+      })
+      if (response.status === 404) return { ...item, status: 'ITEM_STATUS_SOLD_OUT', detectedAt: Date.now() }
+      if (!response.ok) throw new Error(`Mercari Shops page ${response.status}`)
+      const page = await response.text()
+      // Mercari Shops exposes Product JSON-LD availability on the item page.
+      // Only change state when the listing's own availability is explicit; a
+      // missing or changed page marker must not incorrectly mark it as sold.
+      const normalizedPage = page.replaceAll('\\/', '/').replaceAll('\\"', '"')
+      const availability = normalizedPage.match(/"availability"\s*:\s*"https?:\/\/schema\.org\/([^"\\]+)/i)?.[1]
+      const status = availability?.toLowerCase() === 'outofstock'
+        ? 'ITEM_STATUS_SOLD_OUT'
+        : availability?.toLowerCase() === 'instock'
+          ? 'ITEM_STATUS_ON_SALE'
+          : item.status
+      return { ...item, status, detectedAt: Date.now() }
     } finally {
       clearTimeout(timeout)
     }

@@ -103,13 +103,13 @@ describe('Mercari client', () => {
     expect(fetchMock).toHaveBeenCalledOnce()
   })
 
-  it('does not query the ordinary item detail endpoint for Shops products', async () => {
-    const fetchMock = vi.fn(async () => new Response('', { status: 404 }))
+  it('reads Shops product availability from its product page', async () => {
+    const fetchMock = vi.fn(async () => new Response('<script type="application/ld+json">{"offers":{"availability":"https://schema.org/OutOfStock"}}</script>', { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
 
     const result = await new MercariClient().getItem(shopsItem)
 
-    expect(result).toEqual(shopsItem)
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ id: shopsItem.id, status: 'ITEM_STATUS_SOLD_OUT' })
+    expect(fetchMock).toHaveBeenCalledWith(shopsItem.url, expect.objectContaining({ headers: expect.any(Object) }))
   })
 })

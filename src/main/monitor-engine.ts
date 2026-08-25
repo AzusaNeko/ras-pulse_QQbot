@@ -2,6 +2,8 @@ import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import type { AppSnapshot, AppSettings, FavoriteUpdate, MercariItem, NewSubscription, Subscription } from '../shared/types'
 import type { ItemDetailSource, ItemImageValidator, ItemSource } from './mercari-client'
+import { isMercariShopsItem } from './mercari-item-url'
+import { isSoldMercariStatus } from '../shared/mercari-status'
 import type { PersistedState, StateStore } from './store'
 
 const MIN_INTERVAL_MS = 500
@@ -51,6 +53,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     this.favoriteTimer = setInterval(() => void this.checkFavorites(), 30_000)
     this.favoriteTimer.unref()
     this.emitSnapshot()
+    void this.checkFavorites()
   }
 
   stop(): void {
@@ -259,7 +262,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
           if (!latest) continue
           const priceChanged = latest.price !== favorite.price
           const previousPrice = favorite.price
-          const sold = latest.status !== favorite.status && /SOLD|SOLD_OUT/i.test(latest.status)
+          const sold = latest.status !== favorite.status && isSoldMercariStatus(latest.status)
           favorite.name = latest.name
           favorite.price = latest.price
           favorite.thumbnail = latest.thumbnail
@@ -317,7 +320,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     const details = this.source as ItemSource & Partial<ItemDetailSource>
     const outcomes = await Promise.all(items.map(async (item) => {
       let enriched = item
-      if (details.getItem) {
+      if (details.getItem && !isMercariShopsItem(item)) {
         try { enriched = (await details.getItem(item)) ?? item } catch { /* Keep the listing when detail lookup is temporarily unavailable. */ }
       }
       return { item: enriched, accessible: validator.isImageAccessible ? await validator.isImageAccessible(enriched) : true }
