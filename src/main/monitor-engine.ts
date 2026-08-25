@@ -14,6 +14,8 @@ const MAX_RECENT_ITEMS_PER_KEYWORD = 200
 const MAX_RECENT_ITEMS = 300
 const MAX_SEEN_IDS = 500
 const STALLED_CHECK_GRACE_MS = 15_000
+/** Allows for Mercari/index clock skew without treating old search results as new. */
+const NEW_LISTING_CLOCK_SKEW_MS = 2 * 60_000
 
 function clampInitialDisplayCount(value?: number): number {
   return Math.min(5, Math.max(1, Math.trunc(value ?? 2)))
@@ -195,13 +197,20 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       subscription.error = undefined
 
       if (prior) {
-        const newItems = await this.withAccessibleImages(items.filter((candidate) => !seen.has(candidate.id)))
+        const unseenItems = items.filter((candidate) => !seen.has(candidate.id))
+        // A newly-created subscription can receive an incomplete first search
+        // page, then older indexed listings on the next poll. Those listings
+        // must be remembered, but can never be surfaced as a new arrival.
+        const staleIds = new Set(unseenItems
+          .filter((candidate) => !this.wasListedAfterMonitoringStarted(candidate, subscription))
+          .map((candidate) => candidate.id))
+        const newItems = await this.withAccessibleImages(unseenItems.filter((candidate) => !staleIds.has(candidate.id)))
         // Do not mark a new item as seen until its image has passed validation.
         // A temporary CDN timeout must let the next poll retry the item instead
         // of silently discarding it forever.
         const acceptedIds = new Set(newItems.map((item) => item.id))
         this.state.seenBySubscription[id] = [...new Set([
-          ...items.filter((item) => seen.has(item.id) || acceptedIds.has(item.id)).map((item) => item.id),
+          ...items.filter((item) => seen.has(item.id) || acceptedIds.has(item.id) || staleIds.has(item.id)).map((item) => item.id),
           ...seen
         ])].slice(0, MAX_SEEN_IDS)
         for (const item of newItems.reverse()) {
@@ -326,6 +335,12 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       return { item: enriched, accessible: validator.isImageAccessible ? await validator.isImageAccessible(enriched) : true }
     }))
     return outcomes.flatMap((outcome) => outcome.accessible ? [outcome.item] : [])
+  }
+
+  private wasListedAfterMonitoringStarted(item: MercariItem, subscription: Subscription): boolean {
+    if (!item.createdAt) return true
+    const createdAt = item.createdAt > 10_000_000_000 ? item.createdAt : item.createdAt * 1_000
+    return createdAt >= subscription.createdAt - NEW_LISTING_CLOCK_SKEW_MS
   }
 
   private requireSubscription(id: string): Subscription {

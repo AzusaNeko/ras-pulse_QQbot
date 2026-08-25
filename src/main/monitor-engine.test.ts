@@ -148,6 +148,29 @@ describe('MonitorEngine baseline', () => {
     engine.stop()
   })
 
+  it('remembers delayed old search results without announcing them as new', async () => {
+    const source = new FakeSource()
+    const engine = new MonitorEngine(source, new MemoryStore())
+    const notified: MercariItem[] = []
+    source.items = [{ ...item('baseline'), createdAt: Math.floor(Date.now() / 1_000) }]
+    await engine.start()
+    engine.on('newItem', (value) => notified.push(value))
+    const snapshot = await engine.add({ keyword: '相机', initialDisplayCount: 1 })
+    await engine.checkNow(snapshot.subscriptions[0].id)
+
+    source.items = [
+      { ...item('old-delayed'), createdAt: Math.floor((Date.now() - 24 * 60 * 60_000) / 1_000) },
+      { ...item('fresh'), createdAt: Math.floor(Date.now() / 1_000) },
+      ...source.items
+    ]
+    await engine.checkNow(snapshot.subscriptions[0].id)
+    await engine.checkNow(snapshot.subscriptions[0].id)
+
+    expect(notified.map((value) => value.id)).toEqual(['fresh'])
+    expect(engine.snapshot().recentItems.some((value) => value.id === 'old-delayed')).toBe(false)
+    engine.stop()
+  })
+
   it('marks a favorite as sold and emits a status update when its detail becomes sold out', async () => {
     const source = new FakeSource()
     const engine = new MonitorEngine(source, new MemoryStore())
