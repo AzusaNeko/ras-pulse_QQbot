@@ -1,5 +1,6 @@
 import { generateKeyPairSync, randomUUID, sign } from 'node:crypto'
 import type { MercariItem, Subscription } from '../shared/types'
+import { buildMercariItemUrl, isMercariShopsItem, isSupportedMercariImageUrl } from './mercari-item-url'
 
 const SEARCH_URL = 'https://api.mercari.jp/v2/entities:search'
 
@@ -14,6 +15,7 @@ interface ApiItem {
   isAuction?: boolean
   auction_info?: unknown
   auctionInfo?: unknown
+  itemType?: string
 }
 
 interface SearchResponse {
@@ -73,8 +75,9 @@ export function parseSearchResponse(
       name: item.name,
       price: numericPrice,
       thumbnail: item.thumbnails?.[0] ?? '',
-      url: `https://jp.mercari.com/item/${encodeURIComponent(item.id)}`,
+      url: buildMercariItemUrl({ id: item.id, itemType: item.itemType, thumbnail: item.thumbnails?.[0] }),
       status: item.status ?? 'ITEM_STATUS_UNSPECIFIED',
+      itemType: item.itemType,
       isAuction: item.auction ? true : undefined,
       createdAt: item.created == null ? undefined : Number(item.created),
       detectedAt,
@@ -151,7 +154,7 @@ export class MercariClient implements ItemSource {
   }
 
   async isImageAccessible(item: MercariItem): Promise<boolean> {
-    if (!item.thumbnail.startsWith('https://static.mercdn.net/')) return false
+    if (!isSupportedMercariImageUrl(item.thumbnail)) return false
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 2_500)
     try {
@@ -169,6 +172,7 @@ export class MercariClient implements ItemSource {
   }
 
   async getItem(item: MercariItem): Promise<MercariItem | undefined> {
+    if (isMercariShopsItem(item)) return item
     const url = `https://api.mercari.jp/items/get?id=${encodeURIComponent(item.id)}&include_auction=true`
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 8_000)

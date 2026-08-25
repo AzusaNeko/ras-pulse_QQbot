@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { AppSettings, FavoriteUpdate, MercariItem, NewSubscription, QQBotConfig, SaveQQBotConfigInput, Subscription } from '../shared/types'
 import { MercariClient } from './mercari-client'
+import { isSupportedMercariImageUrl } from './mercari-item-url'
 import { MonitorEngine } from './monitor-engine'
 import { JsonStore } from './store'
 import { QQBotNotifier } from './qq-bot-notifier'
@@ -95,7 +96,7 @@ function escapeHtml(value: string): string {
 }
 
 function isMercariImageUrl(url: string | undefined): url is string {
-  return Boolean(url && url.startsWith('https://static.mercdn.net/'))
+  return isSupportedMercariImageUrl(url)
 }
 
 function showImageToast(item: MercariItem, settings: AppSettings, imageUrl: string | undefined, isTest = false): void {

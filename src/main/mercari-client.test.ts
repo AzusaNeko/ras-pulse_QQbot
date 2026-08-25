@@ -1,6 +1,24 @@
 import { createPublicKey, verify } from 'node:crypto'
-import { describe, expect, it } from 'vitest'
-import { createDpop, parseSearchResponse } from './mercari-client'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { MercariItem } from '../shared/types'
+import { createDpop, MercariClient, parseSearchResponse } from './mercari-client'
+
+const shopsItem: MercariItem = {
+  id: '2JLVrjYGogvEbks8Xvz8wM',
+  name: 'ブルガリ ビーゼロワン',
+  price: 217_840,
+  thumbnail: 'https://assets.mercari-shops-static.com/example.webp',
+  url: 'https://jp.mercari.com/shops/product/2JLVrjYGogvEbks8Xvz8wM',
+  status: 'ITEM_STATUS_ON_SALE',
+  itemType: 'ITEM_TYPE_BEYOND',
+  detectedAt: 1,
+  subscriptionId: 'watch-1',
+  keyword: 'バンドリ'
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe('Mercari client', () => {
   it('creates a valid ES256 DPoP proof', () => {
@@ -25,6 +43,50 @@ describe('Mercari client', () => {
     ] }, { id: 'watch-1', keyword: '相机' }, 1234)
 
     expect(result).toHaveLength(1)
-    expect(result[0]).toMatchObject({ id: 'm123', price: 18000, isAuction: true, detectedAt: 1234, subscriptionId: 'watch-1' })
+    expect(result[0]).toMatchObject({
+      id: 'm123',
+      price: 18000,
+      url: 'https://jp.mercari.com/item/m123',
+      isAuction: true,
+      detectedAt: 1234,
+      subscriptionId: 'watch-1'
+    })
+  })
+
+  it('maps Mercari Shops results to the Shops product route', () => {
+    const result = parseSearchResponse({ items: [{
+      id: shopsItem.id,
+      name: shopsItem.name,
+      price: shopsItem.price,
+      thumbnails: [shopsItem.thumbnail],
+      status: shopsItem.status,
+      itemType: 'ITEM_TYPE_BEYOND'
+    }] }, { id: 'watch-1', keyword: 'バンドリ' }, 1234)
+
+    expect(result[0]).toMatchObject({
+      itemType: 'ITEM_TYPE_BEYOND',
+      url: 'https://jp.mercari.com/shops/product/2JLVrjYGogvEbks8Xvz8wM'
+    })
+  })
+
+  it('accepts Mercari Shops thumbnails as product images', async () => {
+    const fetchMock = vi.fn(async () => new Response(new Uint8Array([1]), {
+      status: 200,
+      headers: { 'content-type': 'image/webp' }
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    expect(await new MercariClient().isImageAccessible(shopsItem)).toBe(true)
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
+
+  it('does not query the ordinary item detail endpoint for Shops products', async () => {
+    const fetchMock = vi.fn(async () => new Response('', { status: 404 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await new MercariClient().getItem(shopsItem)
+
+    expect(result).toEqual(shopsItem)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
