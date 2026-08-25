@@ -9,7 +9,16 @@ export interface PersistedState {
   favorites: FavoriteItem[]
   settings: AppSettings
   seenBySubscription: Record<string, string[]>
-  observedUpdatesBySubscription: Record<string, Record<string, number>>
+  observedUpdatesBySubscription: Record<string, Record<string, ObservedListing>>
+}
+
+/** Small snapshot used to explain a later edit without retaining full listing data. */
+export interface ObservedListing {
+  updatedAt: number
+  name: string
+  price: number | null
+  status: string
+  thumbnail: string
 }
 
 export interface StateStore {
@@ -62,6 +71,31 @@ function normalizeStoredItem<T extends MercariItem | FavoriteItem>(item: T): T {
   }
 }
 
+function normalizeObservedUpdates(value: unknown): PersistedState['observedUpdatesBySubscription'] {
+  if (!value || typeof value !== 'object') return {}
+  return Object.fromEntries(Object.entries(value).flatMap(([subscriptionId, entries]) => {
+    if (!entries || typeof entries !== 'object') return []
+    const normalized = Object.fromEntries(Object.entries(entries).flatMap(([itemId, entry]) => {
+      // v0.4.22 stored just the timestamp. Keep it so future edits are still
+      // detected, while gracefully falling back to a generic edit message.
+      if (typeof entry === 'number' && Number.isFinite(entry)) {
+        return [[itemId, { updatedAt: entry, name: '', price: null, status: '', thumbnail: '' }]]
+      }
+      if (!entry || typeof entry !== 'object') return []
+      const candidate = entry as Partial<ObservedListing>
+      if (typeof candidate.updatedAt !== 'number' || !Number.isFinite(candidate.updatedAt)) return []
+      return [[itemId, {
+        updatedAt: candidate.updatedAt,
+        name: typeof candidate.name === 'string' ? candidate.name : '',
+        price: typeof candidate.price === 'number' && Number.isFinite(candidate.price) ? candidate.price : null,
+        status: typeof candidate.status === 'string' ? candidate.status : '',
+        thumbnail: typeof candidate.thumbnail === 'string' ? candidate.thumbnail : ''
+      }]]
+    }))
+    return [[subscriptionId, normalized]]
+  }))
+}
+
 export class JsonStore implements StateStore {
   constructor(private readonly filePath: string) {}
 
@@ -80,7 +114,7 @@ export class JsonStore implements StateStore {
         recentItems: (parsed.recentItems ?? []).map((item) => ({ ...normalizeStoredItem(item), isAuction: typeof item.isAuction === 'boolean' ? item.isAuction : undefined })),
         favorites: (parsed.favorites ?? []).map((item) => ({ ...normalizeStoredItem(item), isAuction: typeof item.isAuction === 'boolean' ? item.isAuction : undefined })),
         seenBySubscription: parsed.seenBySubscription ?? {},
-        observedUpdatesBySubscription: parsed.observedUpdatesBySubscription ?? {}
+        observedUpdatesBySubscription: normalizeObservedUpdates(parsed.observedUpdatesBySubscription)
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') console.error('Failed to read state', error)

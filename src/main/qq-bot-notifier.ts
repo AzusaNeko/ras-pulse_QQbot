@@ -176,9 +176,10 @@ export class QQBotNotifier {
   private formatItem(item: MercariItem, settings: AppSettings): string {
     void settings
     return [
-      `【发现上新】${item.keyword}`,
+      `${item.discoveryType === 'updated' ? '【旧商品更新】' : '【发现上新】'}${item.keyword}`,
       `商品：${item.name}`,
       `价格：¥${item.price.toLocaleString('ja-JP')}`,
+      ...(item.discoveryType === 'updated' ? [`更新内容：${item.updateSummary ?? '卖家编辑了商品信息'}`] : []),
       `链接：${item.url}`
     ].join('\n')
   }

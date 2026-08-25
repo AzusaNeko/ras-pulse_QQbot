@@ -4,7 +4,7 @@ import type { AppSnapshot, AppSettings, FavoriteUpdate, MercariItem, NewSubscrip
 import type { ItemDetailSource, ItemImageValidator, ItemSource } from './mercari-client'
 import { isMercariShopsItem } from './mercari-item-url'
 import { isSoldMercariStatus } from '../shared/mercari-status'
-import type { PersistedState, StateStore } from './store'
+import type { ObservedListing, PersistedState, StateStore } from './store'
 
 const MIN_INTERVAL_MS = 500
 const FAST_INTERVAL_MS = 500
@@ -202,7 +202,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
         const unseenItems = items.filter((candidate) => !seen.has(candidate.id))
         const previousUpdates = this.state.observedUpdatesBySubscription[id] ?? {}
         const editedItems = subscription.monitorUpdates
-          ? items.filter((candidate) => seen.has(candidate.id) && candidate.updatedAt != null && previousUpdates[candidate.id] != null && candidate.updatedAt > previousUpdates[candidate.id])
+          ? items.filter((candidate) => seen.has(candidate.id) && candidate.updatedAt != null && previousUpdates[candidate.id] != null && candidate.updatedAt > previousUpdates[candidate.id].updatedAt)
           : []
         // A newly-created subscription can receive an incomplete first search
         // page, then older indexed listings on the next poll. Those listings
@@ -220,7 +220,6 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
           ...seen
         ])].slice(0, MAX_SEEN_IDS)
         this.state.seenBySubscription[id] = nextSeen
-        this.recordObservedUpdates(id, items, nextSeen)
         for (const item of newItems.reverse()) {
           item.discoveryType = 'new'
           this.state.recentItems = this.retainRecentItems([
@@ -232,11 +231,16 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
         const visibleEdits = await this.withAccessibleImages(editedItems)
         for (const item of visibleEdits.reverse()) {
           item.discoveryType = 'updated'
+          item.updateSummary = this.describeListingUpdate(previousUpdates[item.id], item)
           this.state.recentItems = this.retainRecentItems([
             item,
             ...this.state.recentItems.filter((old) => !(old.subscriptionId === item.subscriptionId && old.id === item.id))
           ])
+          // Updates intentionally use the same event as a new listing: this
+          // keeps desktop and QQ delivery rules consistent with ordinary alerts.
+          this.emit('newItem', item)
         }
+        this.recordObservedUpdates(id, [...items, ...newItems, ...visibleEdits], nextSeen)
       } else {
         // Baseline entries intentionally count as seen even if a thumbnail is
         // unavailable, so pre-existing listings never become false "new" alerts.
@@ -363,11 +367,36 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
 
   private recordObservedUpdates(subscriptionId: string, items: MercariItem[], seenIds: string[]): void {
     const previous = this.state.observedUpdatesBySubscription[subscriptionId] ?? {}
-    const returned = new Map(items.map((item) => [item.id, item.updatedAt]))
+    const returned = new Map(items.map((item) => [item.id, this.toObservedListing(item)]))
     this.state.observedUpdatesBySubscription[subscriptionId] = Object.fromEntries(seenIds.flatMap((id) => {
-      const updatedAt = returned.get(id) ?? previous[id]
-      return updatedAt == null ? [] : [[id, updatedAt]]
+      const observed = returned.get(id) ?? previous[id]
+      return observed == null ? [] : [[id, observed]]
     }))
+  }
+
+  private toObservedListing(item: MercariItem): ObservedListing | undefined {
+    if (item.updatedAt == null) return undefined
+    return {
+      updatedAt: item.updatedAt,
+      name: item.name,
+      price: Number.isFinite(item.price) ? item.price : null,
+      status: item.status,
+      thumbnail: item.thumbnail
+    }
+  }
+
+  private describeListingUpdate(previous: ObservedListing | undefined, item: MercariItem): string {
+    if (!previous) return '卖家编辑了商品信息'
+    const changes: string[] = []
+    if (previous.price != null && previous.price !== item.price) {
+      changes.push(`价格 ¥${previous.price.toLocaleString('ja-JP')} → ¥${item.price.toLocaleString('ja-JP')}`)
+    }
+    if (previous.name && previous.name !== item.name) changes.push('商品标题已修改')
+    if (previous.status && previous.status !== item.status) {
+      changes.push(isSoldMercariStatus(item.status) ? '商品状态变为已售' : '商品在售状态已变更')
+    }
+    if (previous.thumbnail && previous.thumbnail !== item.thumbnail) changes.push('商品主图已更新')
+    return changes.length ? changes.join('；') : '卖家编辑了商品信息'
   }
 
   private requireSubscription(id: string): Subscription {

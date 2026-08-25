@@ -103,7 +103,8 @@ function showImageToast(item: MercariItem, settings: AppSettings, imageUrl: stri
   const display = screen.getPrimaryDisplay().workArea
   const width = 390
   const hasImage = Boolean(imageUrl)
-  const height = hasImage ? 142 : 112
+  const isUpdated = item.discoveryType === 'updated'
+  const height = hasImage ? 158 : 128
   const offset = imageToastWindows.size
   const toast = new BrowserWindow({
     width,
@@ -124,11 +125,12 @@ function showImageToast(item: MercariItem, settings: AppSettings, imageUrl: stri
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false }
   })
   imageToastWindows.add(toast)
-  const title = escapeHtml(`${isTest ? '测试通知' : '发现上新'} · ${item.keyword}`)
+  const title = escapeHtml(`${isTest ? '测试通知' : isUpdated ? '旧商品更新' : '发现上新'} · ${item.keyword}`)
   const name = escapeHtml(settings.notificationIncludeName ? item.name : '检测到新商品')
   const priceText = settings.notificationIncludePrice ? escapeHtml(`¥${item.price.toLocaleString('ja-JP')}`) : ''
   const url = escapeHtml(item.url)
   const thumbnail = imageUrl ? escapeHtml(imageUrl) : ''
+  const updateSummary = isUpdated ? escapeHtml(item.updateSummary ?? '卖家编辑了商品信息') : ''
   const media = hasImage
     ? '<div class="media" id="media">加载图片…</div>'
     : ''
@@ -138,8 +140,8 @@ function showImageToast(item: MercariItem, settings: AppSettings, imageUrl: stri
   const html = `<!doctype html><html><head><meta charset="utf-8"><style>
     *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;font-family:"Segoe UI","Microsoft YaHei",sans-serif}
     .toast{position:relative;width:390px;height:${height}px;display:flex;gap:13px;padding:11px;color:#eaf5ef;background:linear-gradient(135deg,#10271c,#0b1712 72%);border:1px solid #397454;border-radius:14px;box-shadow:0 14px 42px #000b;cursor:pointer}
-    .close{position:absolute;top:8px;right:8px;width:22px;height:22px;border:0;border-radius:50%;color:#b9d2c4;background:#1d3829;cursor:pointer;font-size:17px;line-height:20px}.close:hover{color:#fff;background:#365d46}.media{width:116px;height:116px;flex:none;display:grid;place-items:center;border-radius:9px;overflow:hidden;background:#193325;color:#8ba99a;font-size:11px}.media img{display:block;width:100%;height:100%;object-fit:cover}.copy{min-width:0;display:flex;flex:1;flex-direction:column;padding:2px 20px 2px 0}.tag{color:#6df0ac;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.name{margin-top:9px;line-height:1.35;font-size:13px;font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.bottom{display:flex;align-items:end;justify-content:space-between;gap:8px;margin-top:auto}.price{color:#7df4b5;font-family:monospace;font-size:15px}.hint{color:#749085;font-size:10px}
-  </style></head><body><div class="toast" onclick="window.open('${url}','_blank')">${media}<div class="copy"><div class="tag">${title}</div><div class="name">${name}</div><div class="bottom"><b class="price">${priceText}</b><span class="hint">点击打开商品 ↗</span></div></div><button class="close" title="关闭通知" aria-label="关闭通知" onclick="event.stopPropagation();window.close()">×</button></div>${loader}</body></html>`
+    .close{position:absolute;top:8px;right:8px;width:22px;height:22px;border:0;border-radius:50%;color:#b9d2c4;background:#1d3829;cursor:pointer;font-size:17px;line-height:20px}.close:hover{color:#fff;background:#365d46}.media{width:116px;height:116px;flex:none;display:grid;place-items:center;border-radius:9px;overflow:hidden;background:#193325;color:#8ba99a;font-size:11px}.media img{display:block;width:100%;height:100%;object-fit:cover}.copy{min-width:0;display:flex;flex:1;flex-direction:column;padding:2px 20px 2px 0}.tag{color:#6df0ac;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.name{margin-top:9px;line-height:1.35;font-size:13px;font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.update{margin-top:5px;color:#ffd27d;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bottom{display:flex;align-items:end;justify-content:space-between;gap:8px;margin-top:auto}.price{color:#7df4b5;font-family:monospace;font-size:15px}.hint{color:#749085;font-size:10px}
+  </style></head><body><div class="toast" onclick="window.open('${url}','_blank')">${media}<div class="copy"><div class="tag">${title}</div><div class="name">${name}</div>${updateSummary ? `<div class="update">更新：${updateSummary}</div>` : ''}<div class="bottom"><b class="price">${priceText}</b><span class="hint">点击打开商品 ↗</span></div></div><button class="close" title="关闭通知" aria-label="关闭通知" onclick="event.stopPropagation();window.close()">×</button></div>${loader}</body></html>`
   toast.webContents.setWindowOpenHandler(({ url: target }) => {
     try {
       const parsed = new URL(target)

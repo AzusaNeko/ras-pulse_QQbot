@@ -31,6 +31,8 @@ export interface MercariItem {
   isAuction?: boolean
   createdAt?: number
   updatedAt?: number
+  /** Human-readable summary when this is an edit to a previously seen listing. */
+  updateSummary?: string
   detectedAt: number
   subscriptionId: string
   keyword: string
