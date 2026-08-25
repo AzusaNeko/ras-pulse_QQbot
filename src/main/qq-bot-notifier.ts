@@ -1,5 +1,6 @@
 import { QQBot } from '@tencent-connect/qqbot-nodejs'
 import type { AppSettings, MercariItem, QQBotTarget } from '../shared/types'
+import { isSupportedMercariImageUrl } from './mercari-item-url'
 import { SecretStore } from './secret-store'
 
 export interface QQDeliveryResult {
@@ -211,7 +212,7 @@ export class QQBotNotifier {
   }
 
   private isProductImageUrl(url: string | undefined): url is string {
-    return Boolean(url && url.startsWith('https://static.mercdn.net/'))
+    return isSupportedMercariImageUrl(url)
   }
 
   private getClient(appId: string, secret: string): QQBot {
