@@ -149,7 +149,7 @@ describe('MonitorEngine baseline', () => {
     engine.stop()
   })
 
-  it('prefers on-sale listings over sold listings when creating a baseline', async () => {
+  it('never shows sold listings when creating a baseline', async () => {
     const source = new FakeSource()
     const engine = new MonitorEngine(source, new MemoryStore())
     source.items = [
@@ -162,7 +162,7 @@ describe('MonitorEngine baseline', () => {
     const snapshot = await engine.add({ keyword: '相机', initialDisplayCount: 3 })
     await engine.checkNow(snapshot.subscriptions[0].id)
 
-    expect(engine.snapshot().recentItems.map((value) => value.id)).toEqual(['active-one', 'active-two', 'sold-newest'])
+    expect(engine.snapshot().recentItems.map((value) => value.id)).toEqual(['active-one', 'active-two'])
     engine.stop()
   })
 

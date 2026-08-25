@@ -249,6 +249,9 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
           items,
           clampInitialDisplayCount(subscription.initialDisplayCount)
         )))
+          // The detail endpoint can reveal that a listing sold between search
+          // and enrichment. Never surface that stale result in a new baseline.
+          .filter((item) => !isSoldMercariStatus(item.status))
           .map((item) => ({ ...item, discoveryType: 'baseline' as const }))
         const baselineIds = new Set(baselineItems.map((item) => item.id))
         this.state.recentItems = this.retainRecentItems([
@@ -369,15 +372,12 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
   }
 
   /**
-   * Baselines include sold listings for completeness, but a re-added keyword
-   * should not look like every result is unavailable when active listings are
-   * present. Prefer on-sale records, then use sold records only to fill the
-   * user-selected first-display count.
+   * Sold listings are remembered in the seen baseline, but never shown after a
+   * keyword is added again. Showing fewer than the requested count is better
+   * than presenting an already-unavailable item as an initial result.
    */
   private selectBaselineItems(items: MercariItem[], count: number): MercariItem[] {
-    const onSale = items.filter((item) => !isSoldMercariStatus(item.status))
-    if (onSale.length >= count) return onSale.slice(0, count)
-    return [...onSale, ...items.filter((item) => isSoldMercariStatus(item.status)).slice(0, count - onSale.length)]
+    return items.filter((item) => !isSoldMercariStatus(item.status)).slice(0, count)
   }
 
   private recordObservedUpdates(subscriptionId: string, items: MercariItem[], seenIds: string[]): void {
