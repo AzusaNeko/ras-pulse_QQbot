@@ -182,9 +182,9 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       // Mercari search occasionally returns records out of order despite the
       // requested created-time sort. Keep the baseline and new-item order
       // deterministic before applying the first-display limit.
-      const items = (await this.source.search(subscription))
-        .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
       const prior = this.state.seenBySubscription[id]
+      const items = (await this.source.search(subscription, { includeSold: !prior }))
+        .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
       const seen = new Set(prior ?? [])
       subscription.status = subscription.enabled ? 'watching' : 'paused'
       subscription.lastSuccessAt = Date.now()

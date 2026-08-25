@@ -23,7 +23,12 @@ interface SearchResponse {
 }
 
 export interface ItemSource {
-  search(subscription: Subscription): Promise<MercariItem[]>
+  search(subscription: Subscription, options?: ItemSearchOptions): Promise<MercariItem[]>
+}
+
+export interface ItemSearchOptions {
+  /** Include sold listings when creating a keyword's initial baseline. */
+  includeSold?: boolean
 }
 
 /** Optional capability for sources that can verify a listing thumbnail before it is surfaced. */
@@ -88,14 +93,16 @@ export function parseSearchResponse(
 }
 
 export class MercariClient implements ItemSource {
-  async search(subscription: Subscription): Promise<MercariItem[]> {
+  async search(subscription: Subscription, options: ItemSearchOptions = {}): Promise<MercariItem[]> {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 8_000)
     const searchCondition: Record<string, unknown> = {
       keyword: subscription.keyword,
       sort: 'SORT_CREATED_TIME',
       order: 'ORDER_DESC',
-      status: ['STATUS_ON_SALE'],
+      // Only the initial baseline includes sold listings. Later polling keeps
+      // to on-sale results so historic sold items cannot become false alerts.
+      status: options.includeSold ? ['STATUS_ON_SALE', 'STATUS_SOLD_OUT'] : ['STATUS_ON_SALE'],
       sizeId: [],
       categoryId: [],
       brandId: [],

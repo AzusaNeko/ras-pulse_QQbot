@@ -1,6 +1,6 @@
 import { createPublicKey, verify } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { MercariItem } from '../shared/types'
+import type { MercariItem, Subscription } from '../shared/types'
 import { createDpop, MercariClient, parseSearchResponse } from './mercari-client'
 
 const shopsItem: MercariItem = {
@@ -60,6 +60,22 @@ describe('Mercari client', () => {
     ] }, { id: 'watch-1', keyword: '相机' }, 1234)
 
     expect(result.map((item) => item.id)).toEqual(['newer', 'older'])
+  })
+
+  it('includes sold-out listings in the search request', async () => {
+    const fetchMock = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({ items: [] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' }
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const subscription = { id: 'watch-1', keyword: '相机' } as Subscription
+
+    await new MercariClient().search(subscription, { includeSold: true })
+
+    const request = fetchMock.mock.calls[0]?.[1]
+    expect(request).toBeDefined()
+    const body = JSON.parse(String(request?.body))
+    expect(body.searchCondition.status).toEqual(['STATUS_ON_SALE', 'STATUS_SOLD_OUT'])
   })
 
   it('maps Mercari Shops results to the Shops product route', () => {

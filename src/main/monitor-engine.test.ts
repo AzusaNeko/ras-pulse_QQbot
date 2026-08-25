@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { MercariItem, Subscription } from '../shared/types'
 import type { ItemSource } from './mercari-client'
 import { MonitorEngine } from './monitor-engine'
@@ -13,10 +13,14 @@ class MemoryStore implements StateStore {
 class FakeSource implements ItemSource {
   items: MercariItem[] = []
   inaccessible = new Set<string>()
-  async search(subscription: Subscription): Promise<MercariItem[]> {
+  details = new Map<string, MercariItem>()
+  includeSoldRequests: boolean[] = []
+  async search(subscription: Subscription, options?: { includeSold?: boolean }): Promise<MercariItem[]> {
+    this.includeSoldRequests.push(Boolean(options?.includeSold))
     return structuredClone(this.items).map((value) => ({ ...value, subscriptionId: subscription.id }))
   }
   async isImageAccessible(item: MercariItem): Promise<boolean> { return !this.inaccessible.has(item.id) }
+  async getItem(item: MercariItem): Promise<MercariItem> { return structuredClone(this.details.get(item.id) ?? item) }
 }
 
 function item(id: string): MercariItem {
@@ -54,6 +58,7 @@ describe('MonitorEngine baseline', () => {
     expect(engine.snapshot().recentItems.map((value) => value.id)).toEqual(
       ['m6', 'm5', 'm4', 'm3', 'm2'].slice(0, initialDisplayCount)
     )
+    expect(source.includeSoldRequests).toContain(true)
     engine.stop()
   })
 
@@ -140,6 +145,21 @@ describe('MonitorEngine baseline', () => {
     source.inaccessible.delete('m2')
     await engine.checkNow(snapshot.subscriptions[0].id)
     expect(notified.map((value) => value.id)).toEqual(['m2'])
+    engine.stop()
+  })
+
+  it('marks a favorite as sold and emits a status update when its detail becomes sold out', async () => {
+    const source = new FakeSource()
+    const engine = new MonitorEngine(source, new MemoryStore())
+    const updates: Array<{ sold: boolean }> = []
+    source.details.set('m1', { ...item('m1'), status: 'ITEM_STATUS_SOLD_OUT' })
+    await engine.start()
+    engine.on('favoriteUpdate', (update) => updates.push({ sold: update.sold }))
+
+    await engine.addFavorite(item('m1'))
+
+    await vi.waitFor(() => expect(engine.snapshot().favorites[0].status).toBe('ITEM_STATUS_SOLD_OUT'))
+    expect(updates).toEqual([{ sold: true }])
     engine.stop()
   })
 

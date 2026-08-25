@@ -28,6 +28,7 @@ function sameQQTargets(left: QQBotTarget[], right: QQBotTarget[]): boolean {
 function ItemCard({ item, favorite, onFavorite, onDelete }: { item: MercariItem; favorite: boolean; onFavorite: (item: MercariItem) => void; onDelete: (item: MercariItem) => void }): JSX.Element | null {
   const openItem = (): void => { void window.mercariPulse.openExternal(item.url) }
   const [imageStatus, setImageStatus] = useState<'loading' | 'ready' | 'failed'>('loading')
+  const sold = /SOLD|SOLD_OUT/i.test(item.status)
   if (!item.thumbnail || imageStatus === 'failed') return null
   return (
     <article className={`item-card ${imageStatus === 'ready' ? '' : 'item-card-loading'}`} role="button" tabIndex={imageStatus === 'ready' ? 0 : -1} aria-hidden={imageStatus !== 'ready'} onClick={imageStatus === 'ready' ? openItem : undefined} onKeyDown={(event) => { if (imageStatus === 'ready' && event.key === 'Enter') openItem() }}>
@@ -41,7 +42,7 @@ function ItemCard({ item, favorite, onFavorite, onDelete }: { item: MercariItem;
       <div className="item-copy">
         <div className="item-topline"><span className="keyword-pill">{item.keyword} · {item.discoveryType === 'baseline' ? '初始结果' : '上新'}</span><time>{timeAgo(item.detectedAt)}</time></div>
         <strong>{item.name}</strong>
-        <div className="item-bottom"><div><b>{price(item.price)}</b><i className={`sale-type ${item.isAuction === true ? 'auction' : ''}`}>{item.isAuction === true ? '拍卖商品' : item.isAuction === false ? '直售商品' : '煤炉直售类'}</i></div><span>打开商品 ↗</span></div>
+        <div className="item-bottom"><div><b>{price(item.price)}</b><i className={`sale-type ${item.isAuction === true ? 'auction' : ''}`}>{item.isAuction === true ? '拍卖商品' : item.isAuction === false ? '直售商品' : '煤炉直售类'}</i>{sold && <i className="listing-status sold">已售</i>}</div><span>打开商品 ↗</span></div>
       </div>
     </article>
   )
@@ -87,7 +88,7 @@ function FavoriteCard({ item, onRemove }: { item: FavoriteItem; onRemove: (id: s
   const priceChangeLabel = priceChange == null || priceChange === 0 ? undefined : priceChange < 0 ? '降价' : '涨价'
   return <article className={`favorite-card ${sold ? 'sold' : ''}`} onClick={() => void window.mercariPulse.openExternal(item.url)}>
     <img src={item.thumbnail} alt="" />
-    <div><span>{sold ? '已售出' : '收藏监控中'} · {item.lastCheckedAt ? timeAgo(item.lastCheckedAt) : '等待检查'}</span><strong>{item.name}</strong><b>{price(item.price)} <i className={`sale-type ${item.isAuction === true ? 'auction' : ''}`}>{item.isAuction === true ? '拍卖' : item.isAuction === false ? '直售' : '煤炉直售类'}</i></b>{priceChangeLabel && <small className={`favorite-price-change ${priceChange! < 0 ? 'decrease' : 'increase'}`}>{priceChangeLabel}：{price(item.previousPrice!)} → {price(item.price)}</small>}{item.error && <small>{item.error}</small>}</div>
+    <div><span>{sold ? '已售出' : '收藏监控中'} · {item.lastCheckedAt ? timeAgo(item.lastCheckedAt) : '等待检查'}</span><strong>{item.name}</strong><b>{price(item.price)} <i className={`sale-type ${item.isAuction === true ? 'auction' : ''}`}>{item.isAuction === true ? '拍卖' : item.isAuction === false ? '直售' : '煤炉直售类'}</i>{sold && <i className="listing-status sold">已售</i>}</b>{priceChangeLabel && <small className={`favorite-price-change ${priceChange! < 0 ? 'decrease' : 'increase'}`}>{priceChangeLabel}：{price(item.previousPrice!)} → {price(item.price)}</small>}{item.error && <small>{item.error}</small>}</div>
     <button className="icon-button danger" title="取消收藏" onClick={(event) => { event.stopPropagation(); onRemove(item.id) }}>×</button>
   </article>
 }
