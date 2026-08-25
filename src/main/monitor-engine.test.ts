@@ -100,6 +100,27 @@ describe('MonitorEngine baseline', () => {
     engine.stop()
   })
 
+  it('retries a new item after a temporary image validation failure', async () => {
+    const source = new FakeSource()
+    source.items = [item('m1')]
+    const engine = new MonitorEngine(source, new MemoryStore())
+    const notified: MercariItem[] = []
+    await engine.start()
+    engine.on('newItem', (value) => notified.push(value))
+    const snapshot = await engine.add({ keyword: '相机', initialDisplayCount: 1 })
+    await engine.checkNow(snapshot.subscriptions[0].id)
+
+    source.items = [item('m2'), item('m1')]
+    source.inaccessible.add('m2')
+    await engine.checkNow(snapshot.subscriptions[0].id)
+    expect(notified).toHaveLength(0)
+
+    source.inaccessible.delete('m2')
+    await engine.checkNow(snapshot.subscriptions[0].id)
+    expect(notified.map((value) => value.id)).toEqual(['m2'])
+    engine.stop()
+  })
+
   it('retains up to 200 records per keyword and preserves a keyword\'s final record during global cleanup', async () => {
     const store = new MemoryStore()
     const records = (subscriptionId: string, count: number): MercariItem[] => Array.from({ length: count }, (_, index) => ({

@@ -182,7 +182,6 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       const items = await this.source.search(subscription)
       const prior = this.state.seenBySubscription[id]
       const seen = new Set(prior ?? [])
-      this.state.seenBySubscription[id] = [...new Set([...items.map((item) => item.id), ...seen])].slice(0, MAX_SEEN_IDS)
       subscription.status = subscription.enabled ? 'watching' : 'paused'
       subscription.lastSuccessAt = Date.now()
       subscription.consecutiveErrors = 0
@@ -190,6 +189,14 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
 
       if (prior) {
         const newItems = await this.withAccessibleImages(items.filter((candidate) => !seen.has(candidate.id)))
+        // Do not mark a new item as seen until its image has passed validation.
+        // A temporary CDN timeout must let the next poll retry the item instead
+        // of silently discarding it forever.
+        const acceptedIds = new Set(newItems.map((item) => item.id))
+        this.state.seenBySubscription[id] = [...new Set([
+          ...items.filter((item) => seen.has(item.id) || acceptedIds.has(item.id)).map((item) => item.id),
+          ...seen
+        ])].slice(0, MAX_SEEN_IDS)
         for (const item of newItems.reverse()) {
           item.discoveryType = 'new'
           this.state.recentItems = this.retainRecentItems([
@@ -199,6 +206,9 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
           this.emit('newItem', item)
         }
       } else {
+        // Baseline entries intentionally count as seen even if a thumbnail is
+        // unavailable, so pre-existing listings never become false "new" alerts.
+        this.state.seenBySubscription[id] = [...new Set([...items.map((item) => item.id), ...seen])].slice(0, MAX_SEEN_IDS)
         const baselineItems = (await this.withAccessibleImages(items
           .slice(0, clampInitialDisplayCount(subscription.initialDisplayCount))))
           .map((item) => ({ ...item, discoveryType: 'baseline' as const }))
