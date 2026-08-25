@@ -11,6 +11,7 @@ interface ApiItem {
   thumbnails?: string[]
   status?: string
   created?: number | string
+  updated?: number | string
   auction?: unknown
   isAuction?: boolean
   auction_info?: unknown
@@ -85,6 +86,7 @@ export function parseSearchResponse(
       itemType: item.itemType,
       isAuction: item.auction ? true : undefined,
       createdAt: item.created == null ? undefined : Number(item.created),
+      updatedAt: item.updated == null ? undefined : Number(item.updated),
       detectedAt,
       subscriptionId: subscription.id,
       keyword: subscription.keyword

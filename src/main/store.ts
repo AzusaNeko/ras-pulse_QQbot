@@ -9,6 +9,7 @@ export interface PersistedState {
   favorites: FavoriteItem[]
   settings: AppSettings
   seenBySubscription: Record<string, string[]>
+  observedUpdatesBySubscription: Record<string, Record<string, number>>
 }
 
 export interface StateStore {
@@ -32,7 +33,8 @@ export const defaultState: PersistedState = {
     qqBotAppId: '',
     qqBotTargets: []
   },
-  seenBySubscription: {}
+  seenBySubscription: {},
+  observedUpdatesBySubscription: {}
 }
 
 function normalizeQQKeywords(value: unknown): QQBotKeyword[] {
@@ -74,10 +76,11 @@ export class JsonStore implements StateStore {
           ...parsed.settings,
           qqBotTargets: (parsed.settings?.qqBotTargets ?? []).map((target) => ({ ...target, keywords: normalizeQQKeywords(target.keywords) }))
         },
-        subscriptions: parsed.subscriptions ?? [],
+        subscriptions: (parsed.subscriptions ?? []).map((subscription) => ({ ...subscription, monitorUpdates: Boolean(subscription.monitorUpdates) })),
         recentItems: (parsed.recentItems ?? []).map((item) => ({ ...normalizeStoredItem(item), isAuction: typeof item.isAuction === 'boolean' ? item.isAuction : undefined })),
         favorites: (parsed.favorites ?? []).map((item) => ({ ...normalizeStoredItem(item), isAuction: typeof item.isAuction === 'boolean' ? item.isAuction : undefined })),
-        seenBySubscription: parsed.seenBySubscription ?? {}
+        seenBySubscription: parsed.seenBySubscription ?? {},
+        observedUpdatesBySubscription: parsed.observedUpdatesBySubscription ?? {}
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') console.error('Failed to read state', error)

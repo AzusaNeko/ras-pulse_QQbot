@@ -92,6 +92,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       minPrice: input.minPrice,
       maxPrice: input.maxPrice,
       initialDisplayCount: clampInitialDisplayCount(input.initialDisplayCount),
+      monitorUpdates: Boolean(input.monitorUpdates),
       enabled: true,
       intervalMs,
       createdAt: Date.now(),
@@ -123,6 +124,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       this.state.recentItems = this.state.recentItems.filter((item) => item.subscriptionId !== id)
     }
     delete this.state.seenBySubscription[id]
+    delete this.state.observedUpdatesBySubscription[id]
     const timer = this.timers.get(id)
     if (timer) clearTimeout(timer)
     this.timers.delete(id)
@@ -198,6 +200,10 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
 
       if (prior) {
         const unseenItems = items.filter((candidate) => !seen.has(candidate.id))
+        const previousUpdates = this.state.observedUpdatesBySubscription[id] ?? {}
+        const editedItems = subscription.monitorUpdates
+          ? items.filter((candidate) => seen.has(candidate.id) && candidate.updatedAt != null && previousUpdates[candidate.id] != null && candidate.updatedAt > previousUpdates[candidate.id])
+          : []
         // A newly-created subscription can receive an incomplete first search
         // page, then older indexed listings on the next poll. Those listings
         // must be remembered, but can never be surfaced as a new arrival.
@@ -209,10 +215,12 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
         // A temporary CDN timeout must let the next poll retry the item instead
         // of silently discarding it forever.
         const acceptedIds = new Set(newItems.map((item) => item.id))
-        this.state.seenBySubscription[id] = [...new Set([
+        const nextSeen = [...new Set([
           ...items.filter((item) => seen.has(item.id) || acceptedIds.has(item.id) || staleIds.has(item.id)).map((item) => item.id),
           ...seen
         ])].slice(0, MAX_SEEN_IDS)
+        this.state.seenBySubscription[id] = nextSeen
+        this.recordObservedUpdates(id, items, nextSeen)
         for (const item of newItems.reverse()) {
           item.discoveryType = 'new'
           this.state.recentItems = this.retainRecentItems([
@@ -221,10 +229,20 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
           ])
           this.emit('newItem', item)
         }
+        const visibleEdits = await this.withAccessibleImages(editedItems)
+        for (const item of visibleEdits.reverse()) {
+          item.discoveryType = 'updated'
+          this.state.recentItems = this.retainRecentItems([
+            item,
+            ...this.state.recentItems.filter((old) => !(old.subscriptionId === item.subscriptionId && old.id === item.id))
+          ])
+        }
       } else {
         // Baseline entries intentionally count as seen even if a thumbnail is
         // unavailable, so pre-existing listings never become false "new" alerts.
-        this.state.seenBySubscription[id] = [...new Set([...items.map((item) => item.id), ...seen])].slice(0, MAX_SEEN_IDS)
+        const nextSeen = [...new Set([...items.map((item) => item.id), ...seen])].slice(0, MAX_SEEN_IDS)
+        this.state.seenBySubscription[id] = nextSeen
+        this.recordObservedUpdates(id, items, nextSeen)
         const baselineItems = (await this.withAccessibleImages(items
           .slice(0, clampInitialDisplayCount(subscription.initialDisplayCount))))
           .map((item) => ({ ...item, discoveryType: 'baseline' as const }))
@@ -341,6 +359,15 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     if (!item.createdAt) return true
     const createdAt = item.createdAt > 10_000_000_000 ? item.createdAt : item.createdAt * 1_000
     return createdAt >= subscription.createdAt - NEW_LISTING_CLOCK_SKEW_MS
+  }
+
+  private recordObservedUpdates(subscriptionId: string, items: MercariItem[], seenIds: string[]): void {
+    const previous = this.state.observedUpdatesBySubscription[subscriptionId] ?? {}
+    const returned = new Map(items.map((item) => [item.id, item.updatedAt]))
+    this.state.observedUpdatesBySubscription[subscriptionId] = Object.fromEntries(seenIds.flatMap((id) => {
+      const updatedAt = returned.get(id) ?? previous[id]
+      return updatedAt == null ? [] : [[id, updatedAt]]
+    }))
   }
 
   private requireSubscription(id: string): Subscription {

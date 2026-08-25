@@ -20,6 +20,10 @@ function price(value: number): string {
 }
 
 function listingTime(item: MercariItem): string {
+  if (item.discoveryType === 'updated' && item.updatedAt) {
+    const timestamp = item.updatedAt > 10_000_000_000 ? item.updatedAt : item.updatedAt * 1_000
+    return `更新 ${timeAgo(timestamp)}`
+  }
   if (!item.createdAt) return `检测 ${timeAgo(item.detectedAt)}`
   const timestamp = item.createdAt > 10_000_000_000 ? item.createdAt : item.createdAt * 1_000
   return `上架 ${timeAgo(timestamp)}`
@@ -47,7 +51,7 @@ function ItemCard({ item, favorite, onFavorite, onDelete }: { item: MercariItem;
         <img src={item.thumbnail} alt="" onLoad={() => setImageStatus('ready')} onError={() => setImageStatus('failed')} />
       </div>
       <div className="item-copy">
-        <div className="item-topline"><span className="keyword-pill">{item.keyword} · {item.discoveryType === 'baseline' ? '初始结果' : '上新'}</span><time>{listingTime(item)}</time></div>
+        <div className="item-topline"><span className={`keyword-pill ${item.discoveryType === 'updated' ? 'updated' : ''}`}>{item.keyword} · {item.discoveryType === 'baseline' ? '初始结果' : item.discoveryType === 'updated' ? '旧商品更新' : '上新'}</span><time>{listingTime(item)}</time></div>
         <strong>{item.name}</strong>
         <div className="item-bottom"><div><b>{price(item.price)}</b><i className={`sale-type ${item.isAuction === true ? 'auction' : ''}`}>{item.isAuction === true ? '拍卖商品' : item.isAuction === false ? '直售商品' : '煤炉直售类'}</i>{sold && <i className="listing-status sold">已售</i>}</div><span>打开商品 ↗</span></div>
       </div>
@@ -72,7 +76,7 @@ function SubscriptionCard({ item, fastTaken, onChange, onDelete, onCheck }: {
             {item.excludeKeyword && `排除：${item.excludeKeyword} · `}
             {item.minPrice != null || item.maxPrice != null
               ? `${item.minPrice ? price(item.minPrice) : '不限'} — ${item.maxPrice ? price(item.maxPrice) : '不限'} · ` : ''}
-            首次 {item.initialDisplayCount ?? 2} 条 · 每 <select className="inline-interval" value={item.intervalMs} onChange={(event) => onChange(item.id, { intervalMs: Number(event.target.value) })}><option value="500" disabled={item.intervalMs > 500 && fastTaken}>0.5 秒（极速）</option><option value="1000">1 秒</option><option value="2000">2 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option></select>
+            首次 {item.initialDisplayCount ?? 2} 条 · 每 <select className="inline-interval" value={item.intervalMs} onChange={(event) => onChange(item.id, { intervalMs: Number(event.target.value) })}><option value="500" disabled={item.intervalMs > 500 && fastTaken}>0.5 秒（极速）</option><option value="1000">1 秒</option><option value="2000">2 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option></select> · <label className="inline-check"><input type="checkbox" checked={item.monitorUpdates} onChange={(event) => onChange(item.id, { monitorUpdates: event.target.checked })} />旧商品更新</label>
           </p>
           <small title={item.error}>{item.error ? item.error : `上次成功：${timeAgo(item.lastSuccessAt)}`}</small>
         </div>
@@ -107,6 +111,7 @@ function AddMonitor({ defaultInterval, onAdd }: { defaultInterval: number; onAdd
   const [minPrice, setMinPrice] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
   const [initialDisplayCount, setInitialDisplayCount] = useState('2')
+  const [monitorUpdates, setMonitorUpdates] = useState(false)
   const [busy, setBusy] = useState(false)
 
   async function submit(event: FormEvent): Promise<void> {
@@ -120,9 +125,10 @@ function AddMonitor({ defaultInterval, onAdd }: { defaultInterval: number; onAdd
         minPrice: minPrice ? Number(minPrice) : undefined,
         maxPrice: maxPrice ? Number(maxPrice) : undefined,
         intervalMs: defaultInterval,
-        initialDisplayCount: Number(initialDisplayCount)
+        initialDisplayCount: Number(initialDisplayCount),
+        monitorUpdates
       })
-      setKeyword(''); setExcludeKeyword(''); setMinPrice(''); setMaxPrice(''); setExpanded(false)
+      setKeyword(''); setExcludeKeyword(''); setMinPrice(''); setMaxPrice(''); setMonitorUpdates(false); setExpanded(false)
     } finally { setBusy(false) }
   }
 
@@ -138,6 +144,7 @@ function AddMonitor({ defaultInterval, onAdd }: { defaultInterval: number; onAdd
         <label>首次展示<select value={initialDisplayCount} onChange={(event) => setInitialDisplayCount(event.target.value)}>{[1, 2, 3, 4, 5].map((count) => <option key={count} value={count}>{count} 条</option>)}</select></label>
         <label>最低价<input type="number" min="0" value={minPrice} onChange={(event) => setMinPrice(event.target.value)} placeholder="不限" /></label>
         <label>最高价<input type="number" min="0" value={maxPrice} onChange={(event) => setMaxPrice(event.target.value)} placeholder="不限" /></label>
+        <label className="monitor-updates-check"><input type="checkbox" checked={monitorUpdates} onChange={(event) => setMonitorUpdates(event.target.checked)} />监控旧商品编辑</label>
         <button type="button" className="text-button" onClick={() => setExpanded(false)}>收起</button>
       </div>}
     </form>

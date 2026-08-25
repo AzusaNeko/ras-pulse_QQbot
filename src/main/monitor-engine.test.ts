@@ -171,6 +171,21 @@ describe('MonitorEngine baseline', () => {
     engine.stop()
   })
 
+  it('adds a visible old-listing update when update monitoring is enabled', async () => {
+    const source = new FakeSource()
+    const engine = new MonitorEngine(source, new MemoryStore())
+    source.items = [{ ...item('old-item'), createdAt: 1, updatedAt: 100 }]
+    await engine.start()
+    const snapshot = await engine.add({ keyword: '相机', initialDisplayCount: 1, monitorUpdates: true })
+    await engine.checkNow(snapshot.subscriptions[0].id)
+
+    source.items = [{ ...item('old-item'), createdAt: 1, updatedAt: 200 }]
+    await engine.checkNow(snapshot.subscriptions[0].id)
+
+    expect(engine.snapshot().recentItems[0]).toMatchObject({ id: 'old-item', discoveryType: 'updated', updatedAt: 200 })
+    engine.stop()
+  })
+
   it('marks a favorite as sold and emits a status update when its detail becomes sold out', async () => {
     const source = new FakeSource()
     const engine = new MonitorEngine(source, new MemoryStore())

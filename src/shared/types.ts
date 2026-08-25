@@ -7,6 +7,8 @@ export interface Subscription {
   minPrice?: number
   maxPrice?: number
   initialDisplayCount: number
+  /** Emit an activity record when an already-seen listing is edited. */
+  monitorUpdates: boolean
   enabled: boolean
   intervalMs: number
   createdAt: number
@@ -28,10 +30,11 @@ export interface MercariItem {
   /** Undefined means the item detail could not be loaded yet. */
   isAuction?: boolean
   createdAt?: number
+  updatedAt?: number
   detectedAt: number
   subscriptionId: string
   keyword: string
-  discoveryType?: 'baseline' | 'new'
+  discoveryType?: 'baseline' | 'new' | 'updated'
 }
 
 export interface FavoriteItem {
@@ -125,6 +128,7 @@ export interface NewSubscription {
   maxPrice?: number
   intervalMs?: number
   initialDisplayCount?: number
+  monitorUpdates?: boolean
 }
 
 export interface MonitorEvent {

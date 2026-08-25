@@ -62,6 +62,14 @@ describe('Mercari client', () => {
     expect(result.map((item) => item.id)).toEqual(['newer', 'older'])
   })
 
+  it('keeps Mercari item update timestamps from search results', () => {
+    const result = parseSearchResponse({ items: [
+      { id: 'm123', name: '相机', price: 1_000, created: 100, updated: 200 }
+    ] }, { id: 'watch-1', keyword: '相机' }, 1234)
+
+    expect(result[0]).toMatchObject({ createdAt: 100, updatedAt: 200 })
+  })
+
   it('requests on-sale and sold-out listings separately for an initial baseline', async () => {
     const fetchMock = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({ items: [] }), {
       status: 200,
