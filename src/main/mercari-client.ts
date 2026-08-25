@@ -94,15 +94,23 @@ export function parseSearchResponse(
 
 export class MercariClient implements ItemSource {
   async search(subscription: Subscription, options: ItemSearchOptions = {}): Promise<MercariItem[]> {
+    const statusGroups = options.includeSold
+      ? [['STATUS_ON_SALE'], ['STATUS_SOLD_OUT']]
+      : [['STATUS_ON_SALE']]
+    const batches = await Promise.all(statusGroups.map((statuses) => this.searchByStatus(subscription, statuses)))
+    const unique = new Map<string, MercariItem>()
+    for (const item of batches.flat()) unique.set(item.id, item)
+    return [...unique.values()].sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
+  }
+
+  private async searchByStatus(subscription: Subscription, statuses: string[]): Promise<MercariItem[]> {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 8_000)
     const searchCondition: Record<string, unknown> = {
       keyword: subscription.keyword,
       sort: 'SORT_CREATED_TIME',
       order: 'ORDER_DESC',
-      // Only the initial baseline includes sold listings. Later polling keeps
-      // to on-sale results so historic sold items cannot become false alerts.
-      status: options.includeSold ? ['STATUS_ON_SALE', 'STATUS_SOLD_OUT'] : ['STATUS_ON_SALE'],
+      status: statuses,
       sizeId: [],
       categoryId: [],
       brandId: [],

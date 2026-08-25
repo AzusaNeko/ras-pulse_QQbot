@@ -62,7 +62,7 @@ describe('Mercari client', () => {
     expect(result.map((item) => item.id)).toEqual(['newer', 'older'])
   })
 
-  it('includes sold-out listings in the search request', async () => {
+  it('requests on-sale and sold-out listings separately for an initial baseline', async () => {
     const fetchMock = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({ items: [] }), {
       status: 200,
       headers: { 'content-type': 'application/json' }
@@ -72,10 +72,8 @@ describe('Mercari client', () => {
 
     await new MercariClient().search(subscription, { includeSold: true })
 
-    const request = fetchMock.mock.calls[0]?.[1]
-    expect(request).toBeDefined()
-    const body = JSON.parse(String(request?.body))
-    expect(body.searchCondition.status).toEqual(['STATUS_ON_SALE', 'STATUS_SOLD_OUT'])
+    const statuses = fetchMock.mock.calls.map(([, request]) => JSON.parse(String(request?.body)).searchCondition.status)
+    expect(statuses).toEqual([['STATUS_ON_SALE'], ['STATUS_SOLD_OUT']])
   })
 
   it('maps Mercari Shops results to the Shops product route', () => {
