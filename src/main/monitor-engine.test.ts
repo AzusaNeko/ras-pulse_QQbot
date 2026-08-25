@@ -35,6 +35,28 @@ function item(id: string): MercariItem {
 }
 
 describe('MonitorEngine baseline', () => {
+  it.each([1, 2, 3, 4, 5])('shows the newest %i initial listings when the source response is out of order', async (initialDisplayCount) => {
+    const source = new FakeSource()
+    const engine = new MonitorEngine(source, new MemoryStore())
+    source.items = [
+      { ...item('m2'), createdAt: 2 },
+      { ...item('m5'), createdAt: 5 },
+      { ...item('m1'), createdAt: 1 },
+      { ...item('m6'), createdAt: 6 },
+      { ...item('m3'), createdAt: 3 },
+      { ...item('m4'), createdAt: 4 }
+    ]
+    await engine.start()
+
+    const snapshot = await engine.add({ keyword: `关键词-${initialDisplayCount}`, initialDisplayCount })
+    await engine.checkNow(snapshot.subscriptions[0].id)
+
+    expect(engine.snapshot().recentItems.map((value) => value.id)).toEqual(
+      ['m6', 'm5', 'm4', 'm3', 'm2'].slice(0, initialDisplayCount)
+    )
+    engine.stop()
+  })
+
   it('shows five initial products without emitting notifications, then emits new products', async () => {
     const source = new FakeSource()
     const engine = new MonitorEngine(source, new MemoryStore())
