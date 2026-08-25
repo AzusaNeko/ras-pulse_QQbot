@@ -15,12 +15,13 @@ class FakeSource implements ItemSource {
   inaccessible = new Set<string>()
   details = new Map<string, MercariItem>()
   includeSoldRequests: boolean[] = []
+  detailRequests = 0
   async search(subscription: Subscription, options?: { includeSold?: boolean }): Promise<MercariItem[]> {
     this.includeSoldRequests.push(Boolean(options?.includeSold))
     return structuredClone(this.items).map((value) => ({ ...value, subscriptionId: subscription.id }))
   }
   async isImageAccessible(item: MercariItem): Promise<boolean> { return !this.inaccessible.has(item.id) }
-  async getItem(item: MercariItem): Promise<MercariItem> { return structuredClone(this.details.get(item.id) ?? item) }
+  async getItem(item: MercariItem): Promise<MercariItem> { this.detailRequests += 1; return structuredClone(this.details.get(item.id) ?? item) }
 }
 
 function item(id: string): MercariItem {
@@ -201,6 +202,19 @@ describe('MonitorEngine baseline', () => {
 
     await vi.waitFor(() => expect(engine.snapshot().favorites[0].status).toBe('ITEM_STATUS_SOLD_OUT'))
     expect(updates).toEqual([{ sold: true }])
+    engine.stop()
+  })
+
+  it('stops polling a favorite after it has been marked sold', async () => {
+    const source = new FakeSource()
+    const engine = new MonitorEngine(source, new MemoryStore())
+    source.details.set('m1', { ...item('m1'), status: 'ITEM_STATUS_SOLD_OUT' })
+    await engine.start()
+    await engine.addFavorite(item('m1'))
+    await vi.waitFor(() => expect(engine.snapshot().favorites[0].status).toBe('ITEM_STATUS_SOLD_OUT'))
+    const requestsAfterSale = source.detailRequests
+    await (engine as unknown as { checkFavorites(): Promise<void> }).checkFavorites()
+    expect(source.detailRequests).toBe(requestsAfterSale)
     engine.stop()
   })
 

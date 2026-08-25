@@ -67,14 +67,16 @@ function SubscriptionCard({ item, fastTaken, onChange, onDelete, onCheck }: {
   onDelete: (id: string) => void
   onCheck: (id: string) => void
 }): JSX.Element {
+  const [addingExclusions, setAddingExclusions] = useState(false)
+  const [excludeInput, setExcludeInput] = useState('')
   const addExclude = (): void => {
-    const raw = prompt(`为“${item.keyword}”添加屏蔽词（可用逗号、顿号分隔）：`)
-    if (!raw?.trim()) return
     const existing = item.excludeKeyword.split(/[，,、\n]/).map((term) => term.trim()).filter(Boolean)
     const known = new Set(existing.map((term) => term.toLocaleLowerCase()))
-    const additions = raw.split(/[，,、\n]/).map((term) => term.trim()).filter((term) => term && !known.has(term.toLocaleLowerCase()))
-    if (!additions.length) return
+    const additions = excludeInput.split(/[，,、\n]/).map((term) => term.trim()).filter((term) => term && !known.has(term.toLocaleLowerCase()))
+    if (!additions.length) { setAddingExclusions(false); return }
     onChange(item.id, { excludeKeyword: [...existing, ...additions].join('、') })
+    setExcludeInput('')
+    setAddingExclusions(false)
   }
   return (
     <article className={`subscription-card status-${item.status}`}>
@@ -89,10 +91,15 @@ function SubscriptionCard({ item, fastTaken, onChange, onDelete, onCheck }: {
             首次 {item.initialDisplayCount ?? 2} 条 · 每 <select className="inline-interval" value={item.intervalMs} onChange={(event) => onChange(item.id, { intervalMs: Number(event.target.value) })}><option value="500" disabled={item.intervalMs > 500 && fastTaken}>0.5 秒（极速）</option><option value="1000">1 秒</option><option value="2000">2 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option></select> · <label className="inline-check"><input type="checkbox" checked={item.monitorUpdates} onChange={(event) => onChange(item.id, { monitorUpdates: event.target.checked })} />旧商品更新</label>
           </p>
           <small title={item.error}>{item.error ? item.error : `上次成功：${timeAgo(item.lastSuccessAt)}`}</small>
+          {addingExclusions && <form className="exclude-editor" onSubmit={(event) => { event.preventDefault(); addExclude() }}>
+            <input autoFocus value={excludeInput} onChange={(event) => setExcludeInput(event.target.value)} placeholder="输入屏蔽词，多个用逗号分隔" />
+            <button className="secondary-button" type="submit" disabled={!excludeInput.trim()}>添加</button>
+            <button className="text-button" type="button" onClick={() => { setExcludeInput(''); setAddingExclusions(false) }}>取消</button>
+          </form>}
         </div>
       </div>
       <div className="card-actions">
-        <button className="icon-button" title="添加屏蔽词" onClick={addExclude}>⊘</button>
+        <button className="icon-button" title="添加屏蔽词" onClick={() => setAddingExclusions(true)}>⊘</button>
         <button className="icon-button" title="立即检查" onClick={() => onCheck(item.id)}>↻</button>
         <label className="switch" title={item.enabled ? '暂停' : '启用'}>
           <input type="checkbox" checked={item.enabled} onChange={(event) => onChange(item.id, { enabled: event.target.checked, status: event.target.checked ? 'watching' : 'paused' })} />
@@ -122,7 +129,7 @@ function AddMonitor({ defaultInterval, onAdd }: { defaultInterval: number; onAdd
   const [minPrice, setMinPrice] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
   const [initialDisplayCount, setInitialDisplayCount] = useState('2')
-  const [monitorUpdates, setMonitorUpdates] = useState(false)
+  const [monitorUpdates, setMonitorUpdates] = useState(true)
   const [busy, setBusy] = useState(false)
 
   async function submit(event: FormEvent): Promise<void> {
@@ -139,7 +146,7 @@ function AddMonitor({ defaultInterval, onAdd }: { defaultInterval: number; onAdd
         initialDisplayCount: Number(initialDisplayCount),
         monitorUpdates
       })
-      setKeyword(''); setExcludeKeyword(''); setMinPrice(''); setMaxPrice(''); setMonitorUpdates(false); setExpanded(false)
+      setKeyword(''); setExcludeKeyword(''); setMinPrice(''); setMaxPrice(''); setMonitorUpdates(true); setExpanded(false)
     } finally { setBusy(false) }
   }
 

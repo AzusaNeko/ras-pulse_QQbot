@@ -92,7 +92,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       minPrice: input.minPrice,
       maxPrice: input.maxPrice,
       initialDisplayCount: clampInitialDisplayCount(input.initialDisplayCount),
-      monitorUpdates: Boolean(input.monitorUpdates),
+      monitorUpdates: input.monitorUpdates ?? true,
       enabled: true,
       intervalMs,
       createdAt: Date.now(),
@@ -286,6 +286,9 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     this.favoritesRunning = true
     try {
       for (const favorite of this.state.favorites) {
+        // A sold listing is terminal. Keeping its final state is useful to the
+        // user, but polling it forever wastes requests and can add needless load.
+        if (isSoldMercariStatus(favorite.status)) continue
         const original: MercariItem = { ...favorite, detectedAt: Date.now(), subscriptionId: 'favorite', keyword: '收藏' }
         try {
           const latest = await details.getItem(original)
