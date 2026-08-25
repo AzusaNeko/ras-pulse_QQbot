@@ -179,4 +179,26 @@ describe('MonitorEngine baseline', () => {
     expect(recent.filter((value) => value.subscriptionId === 'keyword-c')).toHaveLength(1)
     engine.stop()
   })
+
+  it('can run 100 one-second keyword checks concurrently without losing a task', async () => {
+    const source = new FakeSource()
+    source.items = [item('baseline')]
+    const engine = new MonitorEngine(source, new MemoryStore())
+    await engine.start()
+    const ids: string[] = []
+    for (let index = 0; index < 100; index += 1) {
+      const snapshot = await engine.add({ keyword: `负载测试-${index}`, intervalMs: 1_000, initialDisplayCount: 1 })
+      ids.push(snapshot.subscriptions[0].id)
+    }
+    // The test invokes every check explicitly so its result does not depend
+    // on wall-clock timer precision in CI.
+    engine.stop()
+    await Promise.all(ids.map((id) => engine.checkNow(id)))
+
+    const snapshot = engine.snapshot()
+    expect(snapshot.subscriptions).toHaveLength(100)
+    expect(snapshot.subscriptions.every((subscription) => subscription.lastSuccessAt && !subscription.error)).toBe(true)
+    expect(snapshot.recentItems).toHaveLength(100)
+    engine.stop()
+  })
 })
