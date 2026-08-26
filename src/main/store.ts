@@ -113,6 +113,12 @@ function normalizeLogs(value: unknown): LogEntry[] {
 }
 
 export class JsonStore implements StateStore {
+  /**
+   * Multiple keyword checks may finish at the same moment. Serialize disk
+   * writes so they never race on `state.json.tmp` and interrupt scheduling.
+   */
+  private writeQueue: Promise<void> = Promise.resolve()
+
   constructor(private readonly filePath: string) {}
 
   async load(): Promise<PersistedState> {
@@ -141,9 +147,18 @@ export class JsonStore implements StateStore {
   }
 
   async save(state: PersistedState): Promise<void> {
-    await mkdir(dirname(this.filePath), { recursive: true })
-    const temporary = `${this.filePath}.tmp`
-    await writeFile(temporary, JSON.stringify(state, null, 2), 'utf8')
-    await rename(temporary, this.filePath)
+    // Serialize before queueing: callers continue mutating the in-memory state
+    // while an earlier disk write is running, so each queued write needs its
+    // own immutable representation.
+    const contents = JSON.stringify(state, null, 2)
+    const write = this.writeQueue.then(async () => {
+      await mkdir(dirname(this.filePath), { recursive: true })
+      const temporary = `${this.filePath}.tmp`
+      await writeFile(temporary, contents, 'utf8')
+      await rename(temporary, this.filePath)
+    })
+    // Keep subsequent writes alive even if one filesystem operation fails.
+    this.writeQueue = write.catch(() => undefined)
+    await write
   }
 }
