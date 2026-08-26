@@ -223,6 +223,32 @@ describe('MonitorEngine baseline', () => {
     engine.stop()
   })
 
+  it('surfaces a newly observed old listing when it was edited after monitoring began', async () => {
+    const source = new FakeSource()
+    const engine = new MonitorEngine(source, new MemoryStore())
+    const notified: MercariItem[] = []
+    source.items = [{ ...item('baseline'), createdAt: Math.floor(Date.now() / 1_000) }]
+    await engine.start()
+    engine.on('newItem', (value) => notified.push(value))
+    const snapshot = await engine.add({ keyword: '相机', initialDisplayCount: 1, monitorUpdates: true })
+    await engine.checkNow(snapshot.subscriptions[0].id)
+
+    source.items = [
+      { ...item('old-but-edited'), createdAt: 1, updatedAt: Math.floor(Date.now() / 1_000) },
+      ...source.items
+    ]
+    await engine.checkNow(snapshot.subscriptions[0].id)
+
+    expect(engine.snapshot().recentItems[0]).toMatchObject({
+      id: 'old-but-edited',
+      discoveryType: 'updated',
+      updateSummary: '旧商品在监控开始后被编辑，首次进入搜索结果'
+    })
+    expect(notified).toHaveLength(1)
+    expect(notified[0]).toMatchObject({ id: 'old-but-edited', discoveryType: 'updated' })
+    engine.stop()
+  })
+
   it('adds a visible old-listing update when update monitoring is enabled', async () => {
     const source = new FakeSource()
     const engine = new MonitorEngine(source, new MemoryStore())

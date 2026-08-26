@@ -221,16 +221,27 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
         // A newly-created subscription can receive an incomplete first search
         // page, then older indexed listings on the next poll. Those listings
         // must be remembered, but can never be surfaced as a new arrival.
-        const staleIds = new Set(unseenItems
-          .filter((candidate) => !this.wasListedAfterMonitoringStarted(candidate, subscription))
+        const staleItems = unseenItems.filter((candidate) => !this.wasListedAfterMonitoringStarted(candidate, subscription))
+        const staleIds = new Set(staleItems.map((candidate) => candidate.id))
+        // A listing can be old but freshly edited, then re-enter Mercari's
+        // newest search results. It was not part of our baseline, so there is
+        // no former snapshot to diff; still surface it as an old-item update
+        // instead of silently discarding it as an ordinary delayed old result.
+        const firstObservedOldUpdates = subscription.monitorUpdates
+          ? staleItems.filter((candidate) => this.wasUpdatedAfterMonitoringStarted(candidate, subscription))
+          : []
+        const oldUpdateIds = new Set(firstObservedOldUpdates.map((candidate) => candidate.id))
+        const ordinaryStaleIds = new Set(staleItems
+          .filter((candidate) => !oldUpdateIds.has(candidate.id))
           .map((candidate) => candidate.id))
         const newItems = await this.withAccessibleImages(unseenItems.filter((candidate) => !staleIds.has(candidate.id)))
+        const visibleFirstObservedOldUpdates = await this.withAccessibleImages(firstObservedOldUpdates)
         // Do not mark a new item as seen until its image has passed validation.
         // A temporary CDN timeout must let the next poll retry the item instead
         // of silently discarding it forever.
-        const acceptedIds = new Set(newItems.map((item) => item.id))
+        const acceptedIds = new Set([...newItems, ...visibleFirstObservedOldUpdates].map((item) => item.id))
         const nextSeen = [...new Set([
-          ...items.filter((item) => seen.has(item.id) || acceptedIds.has(item.id) || staleIds.has(item.id)).map((item) => item.id),
+          ...items.filter((item) => seen.has(item.id) || acceptedIds.has(item.id) || ordinaryStaleIds.has(item.id)).map((item) => item.id),
           ...seen
         ])].slice(0, MAX_SEEN_IDS)
         this.state.seenBySubscription[id] = nextSeen
@@ -241,6 +252,16 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
             ...this.state.recentItems.filter((old) => !(old.subscriptionId === item.subscriptionId && old.id === item.id))
           ])
           this.recordLog('info', `发现上新：${subscription.keyword} · ${item.name}`)
+          this.emit('newItem', item)
+        }
+        for (const item of visibleFirstObservedOldUpdates.reverse()) {
+          item.discoveryType = 'updated'
+          item.updateSummary = '旧商品在监控开始后被编辑，首次进入搜索结果'
+          this.state.recentItems = this.retainRecentItems([
+            item,
+            ...this.state.recentItems.filter((old) => !(old.subscriptionId === item.subscriptionId && old.id === item.id))
+          ])
+          this.recordLog('info', `发现旧商品更新：${subscription.keyword} · ${item.name}（${item.updateSummary}）`)
           this.emit('newItem', item)
         }
         const visibleEdits = await this.withAccessibleImages(editedItems)
@@ -401,6 +422,12 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     if (!item.createdAt) return true
     const createdAt = item.createdAt > 10_000_000_000 ? item.createdAt : item.createdAt * 1_000
     return createdAt >= subscription.createdAt - NEW_LISTING_CLOCK_SKEW_MS
+  }
+
+  private wasUpdatedAfterMonitoringStarted(item: MercariItem, subscription: Subscription): boolean {
+    if (!item.updatedAt) return false
+    const updatedAt = item.updatedAt > 10_000_000_000 ? item.updatedAt : item.updatedAt * 1_000
+    return updatedAt >= subscription.createdAt - NEW_LISTING_CLOCK_SKEW_MS
   }
 
   /**
