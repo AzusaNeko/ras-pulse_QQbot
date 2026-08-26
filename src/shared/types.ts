@@ -100,6 +100,8 @@ export interface QQBotTarget {
   type: QQBotTargetType
   targetId: string
   label: string
+  /** Nickname reported by QQ for the user who most recently used this target. */
+  detectedNickname?: string
   enabled: boolean
   /** Keyword subscriptions belonging to this QQ private chat or group. */
   keywords: QQBotKeyword[]

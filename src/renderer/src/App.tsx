@@ -36,7 +36,12 @@ function listingTime(item: MercariItem): string {
 function sameQQTargets(left: QQBotTarget[], right: QQBotTarget[]): boolean {
   return left.length === right.length && left.every((target, index) => {
     const other = right[index]
-    return target.id === other.id && target.type === other.type && target.targetId === other.targetId && target.label === other.label && target.enabled === other.enabled
+    return target.id === other.id && target.type === other.type && target.targetId === other.targetId && target.label === other.label
+      && target.detectedNickname === other.detectedNickname && target.enabled === other.enabled
+      && target.keywords.length === other.keywords.length && target.keywords.every((keyword, keywordIndex) => {
+        const otherKeyword = other.keywords[keywordIndex]
+        return keyword.keyword === otherKeyword?.keyword && keyword.excludeKeywords.join('\u0000') === otherKeyword.excludeKeywords.join('\u0000')
+      })
   })
 }
 
@@ -64,8 +69,9 @@ function ItemCard({ item, favorite, onFavorite, onDelete }: { item: MercariItem;
   )
 }
 
-function SubscriptionCard({ item, fastTaken, onChange, onDelete, onCheck }: {
+function SubscriptionCard({ item, qqTargets, fastTaken, onChange, onDelete, onCheck }: {
   item: Subscription
+  qqTargets: QQBotTarget[]
   fastTaken: boolean
   onChange: (id: string, patch: Partial<Subscription>) => void
   onDelete: (id: string) => void
@@ -82,6 +88,7 @@ function SubscriptionCard({ item, fastTaken, onChange, onDelete, onCheck }: {
     setExcludeInput('')
     setAddingExclusions(false)
   }
+  const qqSubscribers = qqTargets.filter((target) => target.keywords.some((keyword) => keyword.keyword.toLocaleLowerCase() === item.keyword.toLocaleLowerCase()))
   return (
     <article className={`subscription-card status-${item.status}`}>
       <div className="subscription-main">
@@ -95,6 +102,7 @@ function SubscriptionCard({ item, fastTaken, onChange, onDelete, onCheck }: {
             首次 {item.initialDisplayCount ?? 2} 条 · 每 <select className="inline-interval" value={item.intervalMs} onChange={(event) => onChange(item.id, { intervalMs: Number(event.target.value) })}><option value="500" disabled={item.intervalMs > 500 && fastTaken}>0.5 秒（极速）</option><option value="1000">1 秒</option><option value="2000">2 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option></select> · <label className="inline-check"><input type="checkbox" checked={item.monitorUpdates} onChange={(event) => onChange(item.id, { monitorUpdates: event.target.checked })} />旧商品更新</label>
           </p>
           <small title={item.error}>{item.error ? item.error : `上次成功：${timeAgo(item.lastSuccessAt)}`}</small>
+          {qqSubscribers.length > 0 && <div className="subscription-qq-targets"><b>QQ 推送：</b>{qqSubscribers.map((target) => <span key={target.id} title={target.targetId}>{target.type === 'group' ? '群聊' : '私聊'} · {target.label || target.detectedNickname || target.targetId}{target.detectedNickname && target.label ? `（${target.detectedNickname}）` : ''}{!target.enabled ? '（已停用）' : ''}</span>)}</div>}
           {addingExclusions && <form className="exclude-editor" onSubmit={(event) => { event.preventDefault(); addExclude() }}>
             <input autoFocus value={excludeInput} onChange={(event) => setExcludeInput(event.target.value)} placeholder="输入屏蔽词，多个用逗号分隔" />
             <button className="secondary-button" type="submit" disabled={!excludeInput.trim()}>添加</button>
@@ -246,6 +254,7 @@ function QQBotPanel({ config, onSave, onTest, onSyncPanels }: {
         <label className="switch compact-switch" title={target.enabled ? '停用目标' : '启用目标'}><input type="checkbox" checked={target.enabled} onChange={(event) => changeTarget(target.id, { enabled: event.target.checked })} /><span /></label>
         <select value={target.type} onChange={(event) => changeTarget(target.id, { type: event.target.value as QQBotTarget['type'] })}><option value="group">普通 QQ 群</option><option value="c2c">QQ 私聊</option></select>
         <input value={target.label} onChange={(event) => changeTarget(target.id, { label: event.target.value })} placeholder="备注（可选）" />
+        <span className="qq-target-nickname" title={target.detectedNickname ?? 'QQ 未在事件中提供昵称'}>{target.detectedNickname ? `昵称：${target.detectedNickname}` : '昵称：等待 QQ 提供'}</span>
         <input value={target.targetId} onChange={(event) => changeTarget(target.id, { targetId: event.target.value })} placeholder={target.type === 'group' ? 'group_openid' : 'openid'} />
         <button className="icon-button danger" type="button" title="移除目标" onClick={() => setTargets((items) => items.filter((item) => item.id !== target.id))}>×</button>
       </div>)}
@@ -337,7 +346,7 @@ export function App(): JSX.Element {
           <section className="section-block">
             <div className="section-heading"><div><h2>监控任务</h2><span>{snapshot.subscriptions.length} 个关键词</span></div></div>
             <div className="subscription-grid">
-              {snapshot.subscriptions.map((item) => <SubscriptionCard key={item.id} item={item}
+              {snapshot.subscriptions.map((item) => <SubscriptionCard key={item.id} item={item} qqTargets={snapshot.settings.qqBotTargets}
                 fastTaken={snapshot.subscriptions.some((other) => other.id !== item.id && other.intervalMs <= 500)}
                 onChange={(id, patch) => void action(window.mercariPulse.updateSubscription(id, patch))}
                 onCheck={(id) => void action(window.mercariPulse.checkNow(id))}

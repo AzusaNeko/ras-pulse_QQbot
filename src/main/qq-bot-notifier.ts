@@ -46,22 +46,17 @@ export class QQBotNotifier {
     client.on('message', async (_context, message) => {
       const target = message.replyTarget
       if (target.scope !== 'c2c' && target.scope !== 'group') return
-      await this.onTargetDiscovered({
+      const discoveredTarget: QQBotTarget = {
         id: `${target.scope}:${target.targetId}`,
         type: target.scope,
         targetId: target.targetId,
         label: target.scope === 'group' ? '自动发现的 QQ 群' : '自动发现的 QQ 私聊',
+        detectedNickname: this.detectNickname(message),
         enabled: true,
         keywords: []
-      })
-      const response = await this.onMessageReceived({
-        id: `${target.scope}:${target.targetId}`,
-        type: target.scope,
-        targetId: target.targetId,
-        label: target.scope === 'group' ? '自动发现的 QQ 群' : '自动发现的 QQ 私聊',
-        enabled: true,
-        keywords: []
-      }, message.content)
+      }
+      await this.onTargetDiscovered(discoveredTarget)
+      const response = await this.onMessageReceived(discoveredTarget, message.content)
       if (response) await client.sendText(target, response)
     })
     void client.start().catch((error) => {
@@ -235,5 +230,11 @@ export class QQBotNotifier {
 
   private targetName(target: QQBotTarget): string {
     return target.label || `${target.type === 'group' ? '群聊' : '私聊'} ${target.targetId}`
+  }
+
+  private detectNickname(message: { senderName?: string; raw?: unknown }): string | undefined {
+    const author = (message.raw as { author?: Record<string, unknown> } | undefined)?.author
+    const candidates = [message.senderName, author?.username, author?.nickname, author?.nick]
+    return candidates.find((value): value is string => typeof value === 'string' && Boolean(value.trim()))?.trim()
   }
 }

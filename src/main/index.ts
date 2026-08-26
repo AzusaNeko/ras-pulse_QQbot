@@ -306,9 +306,17 @@ app.whenReady().then(async () => {
   await engine.start()
   qqNotifier = new QQBotNotifier(secretStore, async (target) => {
     const settings = engine.snapshot().settings
-    if (settings.qqBotTargets.some((existing) => existing.id === target.id)) return
-    await engine.updateSettings({ qqBotTargets: [...settings.qqBotTargets, target] })
-    console.info(`已自动发现 QQ 推送目标：${target.type}:${target.targetId}`)
+    const existing = settings.qqBotTargets.find((item) => item.id === target.id)
+    if (!existing) {
+      await engine.updateSettings({ qqBotTargets: [...settings.qqBotTargets, target] })
+      console.info(`已自动发现 QQ 推送目标：${target.type}:${target.targetId}`)
+      return
+    }
+    if (target.detectedNickname && target.detectedNickname !== existing.detectedNickname) {
+      await engine.updateSettings({ qqBotTargets: settings.qqBotTargets.map((item) => item.id === target.id
+        ? { ...item, detectedNickname: target.detectedNickname }
+        : item) })
+    }
   }, async (target, content) => {
     const command = parseQQKeywordCommand(content)
     if (!command) return '指令错误 可以先在帮助中查看指令'
