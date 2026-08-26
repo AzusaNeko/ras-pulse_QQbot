@@ -395,8 +395,8 @@ export function App(): JSX.Element {
             } catch (error) { setNotice(error instanceof Error ? error.message : String(error)) }
           }} onSyncPanels={async () => {
             try {
-              const result = await window.mercariPulse.syncQQCommandPanels()
-              setNotice(`QQ 菜单已更新；指令面板新建 ${result.created} 个，更新 ${result.updated} 个`)
+              await window.mercariPulse.syncQQCommandPanels()
+              setNotice('QQ 自定义菜单已更新；为避免 QQ 指令面板配额异常，本次未创建指令面板。可从“监控管理”菜单或直接发送指令使用。')
             } catch (error) { setNotice(error instanceof Error ? error.message : String(error)) }
           }} />}
           <div className="notice-box"><b>关于 1 秒延迟</b><p>应用每约 1 秒发起一次检查，但最终发现延迟还取决于 Mercari 搜索索引更新时间、网络 RTT 和接口限流。失败时会自动退避，恢复后回到设定间隔。</p></div>

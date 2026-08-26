@@ -8,16 +8,6 @@ export interface QQDeliveryResult {
   failed: number
 }
 
-interface QQPanelRecord {
-  panel_id: string
-  target_type: string
-  panel?: { remark?: string }
-}
-
-interface QQPanelListResponse {
-  records?: QQPanelRecord[]
-}
-
 export class QQBotNotifier {
   private client: QQBot | null = null
   private clientKey = ''
@@ -124,22 +114,10 @@ export class QQBotNotifier {
     return this.sendText(content, settings)
   }
 
-  /** Creates or updates C2C's persistent menu and the C2C/group command panels. */
+  /** Updates QQ's persistent custom menu without consuming command-panel quota. */
   async syncCommandPanels(settings: AppSettings): Promise<{ created: number; updated: number; menuUpdated: boolean }> {
     const secret = await this.requireSecret(settings)
     const client = this.getClient(settings.qqBotAppId, secret)
-    const panel = {
-      items: [
-        { type: 'command', name: '/绑定 ', desc: '为当前会话填写名称' },
-        { type: 'command', name: '/添加关键词 ', desc: '选中后填写关键词' },
-        { type: 'command', name: '/关键词 添加屏蔽词 ', desc: '例：相机 添加屏蔽词 故障' },
-        { type: 'command', name: '/移除关键词 ', desc: '选中后填写关键词' },
-        { type: 'command', name: '/关键词列表', desc: '查看我的订阅' },
-        { type: 'command', name: '/清除全部', desc: '清空前会要求确认' },
-        { type: 'command', name: '/帮助', desc: '查看使用说明' }
-      ],
-      remark: 'ras-pulse-command-panel-v2'
-    }
     await client.api.put('/v2/menu', {
       menu: {
         items: [
@@ -155,20 +133,7 @@ export class QQBotNotifier {
         ]
       }
     })
-    let created = 0
-    let updated = 0
-    for (const scope of ['c2c', 'group'] as const) {
-      const response = await client.api.get<QQPanelListResponse>('/v2/panels', { scope, limit: 50 })
-      const existing = response.records?.find((record) => record.target_type === 'all' && record.panel?.remark === panel.remark)
-      if (existing) {
-        await client.api.put(`/v2/panels/${encodeURIComponent(existing.panel_id)}`, { panel })
-        updated += 1
-      } else {
-        await client.api.post('/v2/panels', { scope, target_type: 'all', panel })
-        created += 1
-      }
-    }
-    return { created, updated, menuUpdated: true }
+    return { created: 0, updated: 0, menuUpdated: true }
   }
 
   private formatItem(item: MercariItem, settings: AppSettings): string {
