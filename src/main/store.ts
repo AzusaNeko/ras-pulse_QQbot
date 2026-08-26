@@ -44,7 +44,9 @@ export const defaultState: PersistedState = {
     defaultIntervalMs: 1_000,
     qqBotEnabled: false,
     qqBotAppId: '',
-    qqBotTargets: []
+    qqBotTargets: [],
+    qqCommandPanelIds: {},
+    qqCommandPanelAppId: ''
   },
   seenBySubscription: {},
   baselineReadyBySubscription: {},
@@ -130,7 +132,9 @@ export class JsonStore implements StateStore {
         settings: {
           ...defaultState.settings,
           ...parsed.settings,
-          qqBotTargets: (parsed.settings?.qqBotTargets ?? []).map((target) => ({ ...target, keywords: normalizeQQKeywords(target.keywords) }))
+          qqBotTargets: (parsed.settings?.qqBotTargets ?? []).map((target) => ({ ...target, keywords: normalizeQQKeywords(target.keywords) })),
+          qqCommandPanelIds: parsed.settings?.qqCommandPanelIds ?? {},
+          qqCommandPanelAppId: parsed.settings?.qqCommandPanelAppId ?? ''
         },
         subscriptions: (parsed.subscriptions ?? []).map((subscription) => ({ ...subscription, monitorUpdates: typeof subscription.monitorUpdates === 'boolean' ? subscription.monitorUpdates : true })),
         recentItems: (parsed.recentItems ?? []).map((item) => ({ ...normalizeStoredItem(item), isAuction: typeof item.isAuction === 'boolean' ? item.isAuction : undefined })),

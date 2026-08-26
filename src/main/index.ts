@@ -263,6 +263,7 @@ function registerIpc(): void {
     }
   })
   ipcMain.handle('qqbot:save-config', async (_event, input: SaveQQBotConfigInput): Promise<QQBotConfig> => {
+    const settings = engine.snapshot().settings
     const appId = input.appId.trim()
     if (input.enabled && !appId) throw new Error('开启 QQ 推送前请填写 AppID')
     const targets = input.targets.map((target) => ({
@@ -277,7 +278,9 @@ function registerIpc(): void {
     await engine.updateSettings({
       qqBotEnabled: Boolean(input.enabled),
       qqBotAppId: appId,
-      qqBotTargets: targets
+      qqBotTargets: targets,
+      qqCommandPanelAppId: appId,
+      qqCommandPanelIds: settings.qqCommandPanelAppId === appId ? settings.qqCommandPanelIds : {}
     })
     await qqNotifier.connect(engine.snapshot().settings)
     return { enabled: Boolean(input.enabled), appId, targets, secretConfigured: await secretStore.has() }
@@ -286,7 +289,12 @@ function registerIpc(): void {
     const snapshot = engine.snapshot()
     return qqNotifier.sendTest(snapshot.settings, snapshot.recentItems[0])
   })
-  ipcMain.handle('qqbot:sync-command-panels', async () => qqNotifier.syncCommandPanels(engine.snapshot().settings))
+  ipcMain.handle('qqbot:sync-command-panels', async () => {
+    const settings = engine.snapshot().settings
+    const result = await qqNotifier.syncCommandPanels(settings)
+    await engine.updateSettings({ qqCommandPanelAppId: settings.qqBotAppId, qqCommandPanelIds: result.panelIds })
+    return result
+  })
   ipcMain.handle('settings:update', (_event, patch: Partial<AppSettings>) => engine.updateSettings(patch))
   ipcMain.handle('shell:open-external', async (_event, url: string) => {
     const parsed = new URL(url)

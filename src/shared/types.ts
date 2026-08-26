@@ -84,6 +84,10 @@ export interface AppSettings {
   qqBotEnabled: boolean
   qqBotAppId: string
   qqBotTargets: QQBotTarget[]
+  /** QQ panel IDs created by this app; used to update rather than recreate panels. */
+  qqCommandPanelIds: Partial<Record<QQBotTargetType, string>>
+  /** AppID that owns qqCommandPanelIds. */
+  qqCommandPanelAppId: string
 }
 
 export type QQBotTargetType = 'group' | 'c2c'
@@ -118,6 +122,7 @@ export interface QQCommandPanelSyncResult {
   created: number
   updated: number
   menuUpdated: boolean
+  panelIds: Partial<Record<QQBotTargetType, string>>
 }
 
 export interface SaveQQBotConfigInput {

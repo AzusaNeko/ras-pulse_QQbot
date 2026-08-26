@@ -1,5 +1,5 @@
 import { QQBot } from '@tencent-connect/qqbot-nodejs'
-import type { AppSettings, MercariItem, QQBotTarget } from '../shared/types'
+import type { AppSettings, MercariItem, QQBotTarget, QQBotTargetType } from '../shared/types'
 import { isSupportedMercariImageUrl } from './mercari-item-url'
 import { SecretStore } from './secret-store'
 
@@ -114,10 +114,22 @@ export class QQBotNotifier {
     return this.sendText(content, settings)
   }
 
-  /** Updates QQ's persistent custom menu without consuming command-panel quota. */
-  async syncCommandPanels(settings: AppSettings): Promise<{ created: number; updated: number; menuUpdated: boolean }> {
+  /** Creates panels once, then updates their stored IDs on every later sync. */
+  async syncCommandPanels(settings: AppSettings): Promise<{ created: number; updated: number; menuUpdated: boolean; panelIds: Partial<Record<QQBotTargetType, string>> }> {
     const secret = await this.requireSecret(settings)
     const client = this.getClient(settings.qqBotAppId, secret)
+    const panel = {
+      items: [
+        { type: 'command', name: '/绑定 ', desc: '为当前会话填写名称' },
+        { type: 'command', name: '/添加关键词 ', desc: '选中后填写关键词' },
+        { type: 'command', name: '/关键词 添加屏蔽词 ', desc: '例：相机 添加屏蔽词 故障' },
+        { type: 'command', name: '/移除关键词 ', desc: '选中后填写关键词' },
+        { type: 'command', name: '/关键词列表', desc: '查看我的订阅' },
+        { type: 'command', name: '/清除全部', desc: '清空前会要求确认' },
+        { type: 'command', name: '/帮助', desc: '查看使用说明' }
+      ],
+      remark: 'ras-pulse-command-panel-v3'
+    }
     await client.api.put('/v2/menu', {
       menu: {
         items: [
@@ -133,7 +145,27 @@ export class QQBotNotifier {
         ]
       }
     })
-    return { created: 0, updated: 0, menuUpdated: true }
+    const panelIds = settings.qqCommandPanelAppId === settings.qqBotAppId ? { ...settings.qqCommandPanelIds } : {}
+    let created = 0
+    let updated = 0
+    for (const scope of ['c2c', 'group'] as const) {
+      const storedId = panelIds[scope]
+      if (storedId) {
+        try {
+          await client.api.put(`/v2/panels/${encodeURIComponent(storedId)}`, { panel })
+          updated += 1
+          continue
+        } catch (error) {
+          if ((error as { httpStatus?: number }).httpStatus !== 404) throw error
+          delete panelIds[scope]
+        }
+      }
+      const createdPanel = await client.api.post<{ panel_id?: string }>('/v2/panels', { scope, target_type: 'all', panel })
+      if (!createdPanel.panel_id) throw new Error('QQ 未返回新建指令面板 ID')
+      panelIds[scope] = createdPanel.panel_id
+      created += 1
+    }
+    return { created, updated, menuUpdated: true, panelIds }
   }
 
   private formatItem(item: MercariItem, settings: AppSettings): string {
