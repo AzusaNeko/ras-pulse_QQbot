@@ -23,6 +23,8 @@ export interface Subscription {
   createdAt: number
   lastCheckedAt?: number
   lastSuccessAt?: number
+  /** Timestamp after which automatic checks may resume following an access block. */
+  cooldownUntil?: number
   status: MonitorStatus
   error?: string
   consecutiveErrors: number

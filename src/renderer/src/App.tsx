@@ -87,7 +87,7 @@ function SubscriptionCard({ item, fastTaken, onChange, onDelete, onCheck }: {
       <div className="subscription-main">
         <div className="status-orbit"><span /></div>
         <div className="subscription-copy">
-          <div className="subscription-title"><h3>{item.keyword}</h3><span className="status-label">{statusLabels[item.status]}</span></div>
+          <div className="subscription-title"><h3>{item.keyword}</h3><span className="status-label">{item.cooldownUntil && item.cooldownUntil > Date.now() ? '冷却中' : statusLabels[item.status]}</span></div>
           <p>
             {item.excludeKeyword && `排除：${item.excludeKeyword} · `}
             {item.minPrice != null || item.maxPrice != null

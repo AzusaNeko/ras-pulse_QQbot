@@ -18,6 +18,8 @@ const STALLED_CHECK_GRACE_MS = 15_000
 const NEW_LISTING_CLOCK_SKEW_MS = 2 * 60_000
 const BASELINE_RETRY_DELAY_MS = 5_000
 const MAX_LOG_ENTRIES = 500
+/** Wait long enough for Mercari's rate-limit window to clear before retrying. */
+const ACCESS_BLOCK_COOLDOWN_MS = 15 * 60_000
 
 function clampInitialDisplayCount(value?: number): number {
   return Math.min(5, Math.max(1, Math.trunc(value ?? 2)))
@@ -188,7 +190,8 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     const subscription = this.state.subscriptions.find((item) => item.id === id)
     if (!subscription?.enabled) return
     const backoff = Math.min(60_000, subscription.intervalMs * 2 ** subscription.consecutiveErrors)
-    const timer = setTimeout(() => void this.check(id), delay ?? backoff)
+    const coolingDelay = Math.max(0, (subscription.cooldownUntil ?? 0) - Date.now())
+    const timer = setTimeout(() => void this.check(id), Math.max(delay ?? backoff, coolingDelay))
     timer.unref()
     this.timers.set(id, timer)
   }
@@ -196,6 +199,12 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
   private async check(id: string, manual = false): Promise<void> {
     const subscription = this.state.subscriptions.find((item) => item.id === id)
     if (!subscription || (!subscription.enabled && !manual) || this.running.has(id)) return
+    if (!manual && (subscription.cooldownUntil ?? 0) > Date.now()) {
+      subscription.status = 'backoff'
+      this.schedule(id)
+      this.emitSnapshot()
+      return
+    }
     this.running.add(id)
     subscription.status = 'checking'
     subscription.lastCheckedAt = Date.now()
@@ -210,6 +219,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       subscription.lastSuccessAt = Date.now()
       subscription.consecutiveErrors = 0
       subscription.error = undefined
+      subscription.cooldownUntil = undefined
 
       if (prior) {
         await this.retryMissingBaseline(id, subscription, items, manual)
@@ -308,7 +318,14 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     } catch (error) {
       subscription.consecutiveErrors += 1
       subscription.status = subscription.consecutiveErrors >= 5 ? 'error' : 'backoff'
-      subscription.error = error instanceof Error ? error.message : String(error)
+      const message = error instanceof Error ? error.message : String(error)
+      if (isMercariAccessBlocked(message)) {
+        subscription.status = 'backoff'
+        subscription.cooldownUntil = Date.now() + ACCESS_BLOCK_COOLDOWN_MS
+        subscription.error = `Mercari 暂时限制访问，已停止此关键词请求至 ${new Date(subscription.cooldownUntil).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
+      } else {
+        subscription.error = message
+      }
       this.recordLog(subscription.consecutiveErrors >= 5 ? 'error' : 'warn', `监控检查失败：${subscription.keyword} · ${subscription.error}`)
     } finally {
       this.running.delete(id)
@@ -519,4 +536,8 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
   private emitSnapshot(): void {
     this.emit('snapshot', this.snapshot())
   }
+}
+
+function isMercariAccessBlocked(message: string): boolean {
+  return /(?:Mercari(?:\s+\w+)*\s+API\s+(?:403|429)\b|\b(?:403|429)\b|forbidden|access denied|too many requests|rate limit|captcha|访问(?:被)?(?:限制|拒绝))/i.test(message)
 }

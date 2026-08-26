@@ -12,12 +12,14 @@ class MemoryStore implements StateStore {
 
 class FakeSource implements ItemSource {
   items: MercariItem[] = []
+  searchError: Error | undefined
   inaccessible = new Set<string>()
   details = new Map<string, MercariItem>()
   includeSoldRequests: boolean[] = []
   detailRequests = 0
   async search(subscription: Subscription, options?: { includeSold?: boolean }): Promise<MercariItem[]> {
     this.includeSoldRequests.push(Boolean(options?.includeSold))
+    if (this.searchError) throw this.searchError
     return structuredClone(this.items).map((value) => ({ ...value, subscriptionId: subscription.id }))
   }
   async isImageAccessible(item: MercariItem): Promise<boolean> { return !this.inaccessible.has(item.id) }
@@ -220,6 +222,26 @@ describe('MonitorEngine baseline', () => {
 
     expect(notified.map((value) => value.id)).toEqual(['fresh'])
     expect(engine.snapshot().recentItems.some((value) => value.id === 'old-delayed')).toBe(false)
+    engine.stop()
+  })
+
+  it('cools down only the blocked keyword after a Mercari access-limit response', async () => {
+    const source = new FakeSource()
+    source.items = [item('baseline')]
+    const engine = new MonitorEngine(source, new MemoryStore())
+    await engine.start()
+    const snapshot = await engine.add({ keyword: '相机', initialDisplayCount: 1 })
+    const subscriptionId = snapshot.subscriptions[0].id
+    await engine.checkNow(subscriptionId)
+
+    source.searchError = new Error('Mercari API 429: too many requests')
+    await engine.checkNow(subscriptionId)
+
+    expect(engine.snapshot().subscriptions[0]).toMatchObject({
+      status: 'backoff',
+      error: expect.stringContaining('暂时限制访问')
+    })
+    expect(engine.snapshot().subscriptions[0].cooldownUntil).toBeGreaterThan(Date.now() + 14 * 60_000)
     engine.stop()
   })
 
