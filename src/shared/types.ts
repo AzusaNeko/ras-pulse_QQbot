@@ -119,6 +119,7 @@ export interface QQBotConfig {
 export interface QQCommandPanelSyncResult {
   created: number
   updated: number
+  deleted: number
   menuUpdated: boolean
 }
 

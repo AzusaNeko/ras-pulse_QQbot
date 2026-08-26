@@ -11,6 +11,7 @@ export interface QQDeliveryResult {
 interface QQPanelRecord {
   panel_id: string
   target_type: string
+  remark?: string
   panel?: { remark?: string }
 }
 
@@ -124,8 +125,8 @@ export class QQBotNotifier {
     return this.sendText(content, settings)
   }
 
-  /** Creates or updates C2C's persistent menu and the C2C/group command panels. */
-  async syncCommandPanels(settings: AppSettings): Promise<{ created: number; updated: number; menuUpdated: boolean }> {
+  /** Resets Ras Pulse's C2C/group command panels, then recreates the current pair. */
+  async syncCommandPanels(settings: AppSettings): Promise<{ created: number; updated: number; deleted: number; menuUpdated: boolean }> {
     const secret = await this.requireSecret(settings)
     const client = this.getClient(settings.qqBotAppId, secret)
     const panel = {
@@ -156,19 +157,18 @@ export class QQBotNotifier {
       }
     })
     let created = 0
-    let updated = 0
+    let deleted = 0
     for (const scope of ['c2c', 'group'] as const) {
       const response = await client.api.get<QQPanelListResponse>('/v2/panels', { scope, limit: 50 })
-      const existing = response.records?.find((record) => record.target_type === 'all' && record.panel?.remark === panel.remark)
-      if (existing) {
-        await client.api.put(`/v2/panels/${encodeURIComponent(existing.panel_id)}`, { panel })
-        updated += 1
-      } else {
-        await client.api.post('/v2/panels', { scope, target_type: 'all', panel })
-        created += 1
+      const stalePanels = (response.records ?? []).filter((record) => this.isRasPulsePanel(record))
+      for (const stalePanel of stalePanels) {
+        await client.api.delete(`/v2/panels/${encodeURIComponent(stalePanel.panel_id)}`)
+        deleted += 1
       }
+      await client.api.post('/v2/panels', { scope, target_type: 'all', panel })
+      created += 1
     }
-    return { created, updated, menuUpdated: true }
+    return { created, updated: 0, deleted, menuUpdated: true }
   }
 
   private formatItem(item: MercariItem, settings: AppSettings): string {
@@ -239,5 +239,10 @@ export class QQBotNotifier {
     const author = (message.raw as { author?: Record<string, unknown> } | undefined)?.author
     const candidates = [message.senderName, author?.username, author?.nickname, author?.nick]
     return candidates.find((value): value is string => typeof value === 'string' && Boolean(value.trim()))?.trim()
+  }
+
+  private isRasPulsePanel(record: QQPanelRecord): boolean {
+    const remark = record.panel?.remark ?? record.remark ?? ''
+    return remark.startsWith('ras-pulse-command-panel')
   }
 }
