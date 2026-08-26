@@ -22,6 +22,11 @@ const imageToastWindows = new Set<BrowserWindow>()
 
 app.setAppUserModelId('com.mercari-pulse.desktop')
 
+// Keep the monitor and its background polling engine in one process. When the
+// user starts the app again, Electron routes that launch to this process.
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
+if (!hasSingleInstanceLock) app.quit()
+
 function showTrayFallback(title: string, body: string, silent: boolean): void {
   if (process.platform !== 'win32' || !tray) return
   tray.displayBalloon({
@@ -162,6 +167,7 @@ function broadcast(event: unknown): void {
 }
 
 function showWindow(): void {
+  if (window?.isMinimized()) window.restore()
   window?.show()
   window?.focus()
 }
@@ -292,6 +298,7 @@ function registerIpc(): void {
 }
 
 app.whenReady().then(async () => {
+  if (!hasSingleInstanceLock) return
   const userData = app.getPath('userData')
   secretStore = new SecretStore(join(userData, 'qqbot-secret.dat'))
   const mercariClient = new MercariClient((input, init) => net.fetch(input, init))
@@ -378,6 +385,10 @@ app.whenReady().then(async () => {
   createTray()
 
   app.on('activate', () => window ? showWindow() : createWindow())
+})
+
+app.on('second-instance', () => {
+  showWindow()
 })
 
 app.on('before-quit', () => {
