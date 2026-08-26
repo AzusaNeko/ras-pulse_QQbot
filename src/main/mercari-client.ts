@@ -3,6 +3,9 @@ import type { MercariItem, Subscription } from '../shared/types'
 import { buildMercariItemUrl, isMercariShopsItem, isSupportedMercariImageUrl } from './mercari-item-url'
 
 const SEARCH_URL = 'https://api.mercari.jp/v2/entities:search'
+const REQUEST_TIMEOUT_MS = 8_000
+
+export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 
 interface ApiItem {
   id?: string
@@ -95,6 +98,11 @@ export function parseSearchResponse(
 }
 
 export class MercariClient implements ItemSource {
+  constructor(
+    private readonly fetcher: FetchLike = globalThis.fetch,
+    private readonly timeoutMs = REQUEST_TIMEOUT_MS
+  ) {}
+
   async search(subscription: Subscription, options: ItemSearchOptions = {}): Promise<MercariItem[]> {
     const statusGroups = options.includeSold
       ? [['STATUS_ON_SALE'], ['STATUS_SOLD_OUT']]
@@ -110,7 +118,7 @@ export class MercariClient implements ItemSource {
 
   private async searchByStatus(subscription: Subscription, statuses: string[]): Promise<MercariItem[]> {
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 8_000)
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs)
     const searchCondition: Record<string, unknown> = {
       keyword: subscription.keyword,
       sort: 'SORT_CREATED_TIME',
@@ -147,7 +155,7 @@ export class MercariClient implements ItemSource {
     }
 
     try {
-      const response = await fetch(SEARCH_URL, {
+      const response = await this.fetcher(SEARCH_URL, {
         method: 'POST',
         signal: controller.signal,
         headers: {
@@ -168,6 +176,11 @@ export class MercariClient implements ItemSource {
         console.error(JSON.stringify(payload).slice(0, 2_000))
       }
       return parseSearchResponse(payload, subscription)
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new Error('Mercari 请求超时，请检查网络或系统代理')
+      }
+      throw error
     } finally {
       clearTimeout(timeout)
     }
@@ -178,7 +191,7 @@ export class MercariClient implements ItemSource {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 2_500)
     try {
-      const response = await fetch(item.thumbnail, {
+      const response = await this.fetcher(item.thumbnail, {
         signal: controller.signal,
         headers: { range: 'bytes=0-0' }
       })
@@ -195,9 +208,9 @@ export class MercariClient implements ItemSource {
     if (isMercariShopsItem(item)) return this.getShopsItem(item)
     const url = `https://api.mercari.jp/items/get?id=${encodeURIComponent(item.id)}&include_auction=true`
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 8_000)
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs)
     try {
-      const response = await fetch(url, {
+      const response = await this.fetcher(url, {
         signal: controller.signal,
         headers: { accept: '*/*', dpop: createDpop('GET', url), 'x-platform': 'web', 'user-agent': 'python-mercari' }
       })
@@ -223,9 +236,9 @@ export class MercariClient implements ItemSource {
   /** Shops listings do not support the ordinary item-detail endpoint. */
   private async getShopsItem(item: MercariItem): Promise<MercariItem> {
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 8_000)
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs)
     try {
-      const response = await fetch(item.url, {
+      const response = await this.fetcher(item.url, {
         signal: controller.signal,
         headers: { accept: 'text/html,application/xhtml+xml', 'user-agent': 'python-mercari' }
       })
