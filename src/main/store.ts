@@ -1,12 +1,13 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import type { AppSettings, FavoriteItem, MercariItem, QQBotKeyword, Subscription } from '../shared/types'
+import type { AppSettings, FavoriteItem, LogEntry, MercariItem, QQBotKeyword, Subscription } from '../shared/types'
 import { buildMercariItemUrl, isMercariShopsItem, MERCARI_SHOPS_ITEM_TYPE } from './mercari-item-url'
 
 export interface PersistedState {
   subscriptions: Subscription[]
   recentItems: MercariItem[]
   favorites: FavoriteItem[]
+  logs: LogEntry[]
   settings: AppSettings
   seenBySubscription: Record<string, string[]>
   /** Whether this subscription has successfully rendered its first baseline. */
@@ -32,6 +33,7 @@ export const defaultState: PersistedState = {
   subscriptions: [],
   recentItems: [],
   favorites: [],
+  logs: [],
   settings: {
     notificationsEnabled: true,
     soundEnabled: true,
@@ -99,6 +101,17 @@ function normalizeObservedUpdates(value: unknown): PersistedState['observedUpdat
   }))
 }
 
+function normalizeLogs(value: unknown): LogEntry[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return []
+    const candidate = entry as Partial<LogEntry>
+    if (typeof candidate.id !== 'string' || typeof candidate.timestamp !== 'number' || !Number.isFinite(candidate.timestamp)
+      || typeof candidate.message !== 'string' || !['info', 'warn', 'error'].includes(candidate.level ?? '')) return []
+    return [{ id: candidate.id, timestamp: candidate.timestamp, message: candidate.message, level: candidate.level as LogEntry['level'] }]
+  }).slice(0, 500)
+}
+
 export class JsonStore implements StateStore {
   constructor(private readonly filePath: string) {}
 
@@ -116,6 +129,7 @@ export class JsonStore implements StateStore {
         subscriptions: (parsed.subscriptions ?? []).map((subscription) => ({ ...subscription, monitorUpdates: typeof subscription.monitorUpdates === 'boolean' ? subscription.monitorUpdates : true })),
         recentItems: (parsed.recentItems ?? []).map((item) => ({ ...normalizeStoredItem(item), isAuction: typeof item.isAuction === 'boolean' ? item.isAuction : undefined })),
         favorites: (parsed.favorites ?? []).map((item) => ({ ...normalizeStoredItem(item), isAuction: typeof item.isAuction === 'boolean' ? item.isAuction : undefined })),
+        logs: normalizeLogs(parsed.logs),
         seenBySubscription: parsed.seenBySubscription ?? {},
         baselineReadyBySubscription: parsed.baselineReadyBySubscription ?? {},
         observedUpdatesBySubscription: normalizeObservedUpdates(parsed.observedUpdatesBySubscription)

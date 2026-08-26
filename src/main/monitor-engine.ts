@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
-import type { AppSnapshot, AppSettings, FavoriteUpdate, MercariItem, NewSubscription, Subscription } from '../shared/types'
+import type { AppSnapshot, AppSettings, FavoriteUpdate, LogLevel, MercariItem, NewSubscription, Subscription } from '../shared/types'
 import type { ItemDetailSource, ItemImageValidator, ItemSource } from './mercari-client'
 import { isMercariShopsItem } from './mercari-item-url'
 import { isSoldMercariStatus } from '../shared/mercari-status'
@@ -17,6 +17,7 @@ const STALLED_CHECK_GRACE_MS = 15_000
 /** Allows for Mercari/index clock skew without treating old search results as new. */
 const NEW_LISTING_CLOCK_SKEW_MS = 2 * 60_000
 const BASELINE_RETRY_DELAY_MS = 5_000
+const MAX_LOG_ENTRIES = 500
 
 function clampInitialDisplayCount(value?: number): number {
   return Math.min(5, Math.max(1, Math.trunc(value ?? 2)))
@@ -51,6 +52,8 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       await this.store.save(this.state)
     }
     this.startedAt = Date.now()
+    this.recordLog('info', `监控引擎已启动，已加载 ${this.state.subscriptions.length} 个关键词任务。`)
+    await this.store.save(this.state)
     for (const subscription of this.state.subscriptions) this.schedule(subscription.id, 120)
     this.healthTimer = setInterval(() => this.recoverStalledSubscriptions(), 5_000)
     this.healthTimer.unref()
@@ -74,6 +77,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       subscriptions: structuredClone(this.state.subscriptions),
       recentItems: structuredClone(this.state.recentItems),
       favorites: structuredClone(this.state.favorites),
+      logs: structuredClone(this.state.logs),
       settings: structuredClone(this.state.settings),
       startedAt: this.startedAt
     }
@@ -102,6 +106,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       consecutiveErrors: 0
     }
     this.state.subscriptions.unshift(subscription)
+    this.recordLog('info', `已添加关键词监控：${keyword}（每 ${intervalMs} ms）。`)
     await this.persistAndEmit()
     this.schedule(subscription.id, 20)
     return this.snapshot()
@@ -115,12 +120,14 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       id,
       intervalMs
     })
+    this.recordLog('info', `已更新关键词监控：${subscription.keyword}。`)
     await this.persistAndEmit()
     this.schedule(id, 20)
     return this.snapshot()
   }
 
   async remove(id: string, removeRelatedItems = false): Promise<AppSnapshot> {
+    const removed = this.requireSubscription(id)
     this.state.subscriptions = this.state.subscriptions.filter((item) => item.id !== id)
     if (removeRelatedItems) {
       this.state.recentItems = this.state.recentItems.filter((item) => item.subscriptionId !== id)
@@ -132,6 +139,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     const timer = this.timers.get(id)
     if (timer) clearTimeout(timer)
     this.timers.delete(id)
+    this.recordLog('info', `已取消关键词监控：${removed.keyword}${removeRelatedItems ? '，并清理关联商品动态。' : '。'}`)
     await this.persistAndEmit()
     return this.snapshot()
   }
@@ -150,13 +158,16 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       id: item.id, name: item.name, price: item.price, thumbnail: item.thumbnail, url: item.url,
       status: item.status, itemType: item.itemType, isAuction: item.isAuction, addedAt: Date.now(), lastCheckedAt: Date.now()
     })
+    this.recordLog('info', `已收藏商品：${item.name}。`)
     await this.persistAndEmit()
     void this.checkFavorites()
     return this.snapshot()
   }
 
   async removeFavorite(itemId: string): Promise<AppSnapshot> {
+    const favorite = this.state.favorites.find((item) => item.id === itemId)
     this.state.favorites = this.state.favorites.filter((favorite) => favorite.id !== itemId)
+    if (favorite) this.recordLog('info', `已取消收藏：${favorite.name}。`)
     await this.persistAndEmit()
     return this.snapshot()
   }
@@ -229,6 +240,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
             item,
             ...this.state.recentItems.filter((old) => !(old.subscriptionId === item.subscriptionId && old.id === item.id))
           ])
+          this.recordLog('info', `发现上新：${subscription.keyword} · ${item.name}`)
           this.emit('newItem', item)
         }
         const visibleEdits = await this.withAccessibleImages(editedItems)
@@ -239,6 +251,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
             item,
             ...this.state.recentItems.filter((old) => !(old.subscriptionId === item.subscriptionId && old.id === item.id))
           ])
+          this.recordLog('info', `旧商品更新：${subscription.keyword} · ${item.name}（${item.updateSummary}）`)
           // Updates intentionally use the same event as a new listing: this
           // keeps desktop and QQ delivery rules consistent with ordinary alerts.
           this.emit('newItem', item)
@@ -264,6 +277,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
           ...baselineItems,
           ...this.state.recentItems.filter((old) => !(old.subscriptionId === subscription.id && baselineIds.has(old.id)))
         ])
+        this.recordLog('info', `已建立首次基线：${subscription.keyword}，展示 ${baselineItems.length} 条在售商品。`)
         // If thumbnail validation had a transient failure, all item IDs are
         // still marked seen above. Keep a retry marker so the first display is
         // eventually populated without falsely emitting an “up new” alert.
@@ -274,6 +288,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       subscription.consecutiveErrors += 1
       subscription.status = subscription.consecutiveErrors >= 5 ? 'error' : 'backoff'
       subscription.error = error instanceof Error ? error.message : String(error)
+      this.recordLog(subscription.consecutiveErrors >= 5 ? 'error' : 'warn', `监控检查失败：${subscription.keyword} · ${subscription.error}`)
     } finally {
       this.running.delete(id)
       await this.persistAndEmit()
@@ -318,8 +333,9 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
           favorite.isAuction = latest.isAuction
           favorite.error = undefined
           if (priceChanged || sold) {
-            if (priceChanged) favorite.previousPrice = previousPrice
-            favorite.lastChangedAt = Date.now()
+          if (priceChanged) favorite.previousPrice = previousPrice
+          favorite.lastChangedAt = Date.now()
+            this.recordLog('info', `收藏商品状态变化：${favorite.name}${sold ? ' · 已售出' : ''}${priceChanged ? ` · 价格 ¥${previousPrice.toLocaleString('ja-JP')} → ¥${favorite.price.toLocaleString('ja-JP')}` : ''}`)
             this.emit('favoriteUpdate', { favorite: structuredClone(favorite), priceChanged, sold })
           }
         } catch (error) {
@@ -374,6 +390,11 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       return { item: enriched, accessible: validator.isImageAccessible ? await validator.isImageAccessible(enriched) : true }
     }))
     return outcomes.flatMap((outcome) => outcome.accessible ? [outcome.item] : [])
+  }
+
+  private recordLog(level: LogLevel, message: string): void {
+    this.state.logs.unshift({ id: randomUUID(), timestamp: Date.now(), level, message })
+    if (this.state.logs.length > MAX_LOG_ENTRIES) this.state.logs.length = MAX_LOG_ENTRIES
   }
 
   private wasListedAfterMonitoringStarted(item: MercariItem, subscription: Subscription): boolean {

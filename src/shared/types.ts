@@ -1,5 +1,14 @@
 export type MonitorStatus = 'watching' | 'paused' | 'checking' | 'backoff' | 'error'
 
+export type LogLevel = 'info' | 'warn' | 'error'
+
+export interface LogEntry {
+  id: string
+  timestamp: number
+  level: LogLevel
+  message: string
+}
+
 export interface Subscription {
   id: string
   keyword: string
@@ -119,6 +128,7 @@ export interface AppSnapshot {
   subscriptions: Subscription[]
   recentItems: MercariItem[]
   favorites: FavoriteItem[]
+  logs: LogEntry[]
   settings: AppSettings
   startedAt: number
 }

@@ -149,6 +149,21 @@ describe('MonitorEngine baseline', () => {
     engine.stop()
   })
 
+  it('records key monitor events in the persisted runtime log', async () => {
+    const source = new FakeSource()
+    const engine = new MonitorEngine(source, new MemoryStore())
+    source.items = [item('baseline')]
+    await engine.start()
+    const snapshot = await engine.add({ keyword: '相机', initialDisplayCount: 1 })
+    await engine.checkNow(snapshot.subscriptions[0].id)
+
+    expect(engine.snapshot().logs.map((entry) => entry.message)).toEqual(expect.arrayContaining([
+      expect.stringContaining('已添加关键词监控：相机'),
+      expect.stringContaining('已建立首次基线：相机')
+    ]))
+    engine.stop()
+  })
+
   it('never shows sold listings when creating a baseline', async () => {
     const source = new FakeSource()
     const engine = new MonitorEngine(source, new MemoryStore())

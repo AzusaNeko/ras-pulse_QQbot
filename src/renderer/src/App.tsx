@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type JSX, type ReactNode } from 'react'
-import type { AppSnapshot, FavoriteItem, MercariItem, MonitorStatus, NewSubscription, QQBotConfig, QQBotTarget, Subscription } from '../../shared/types'
+import type { AppSnapshot, FavoriteItem, LogEntry, MercariItem, MonitorStatus, NewSubscription, QQBotConfig, QQBotTarget, Subscription } from '../../shared/types'
 import { isSoldMercariStatus } from '../../shared/mercari-status'
 
 const statusLabels: Record<MonitorStatus, string> = {
@@ -17,6 +17,10 @@ function timeAgo(timestamp?: number): string {
 
 function price(value: number): string {
   return `¥${value.toLocaleString('ja-JP')}`
+}
+
+function logTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleString('zh-CN', { hour12: false })
 }
 
 function listingTime(item: MercariItem): string {
@@ -169,6 +173,18 @@ function AddMonitor({ defaultInterval, onAdd }: { defaultInterval: number; onAdd
   )
 }
 
+function LogPanel({ logs }: { logs: LogEntry[] }): JSX.Element {
+  const [level, setLevel] = useState<'all' | LogEntry['level']>('all')
+  const visible = logs.filter((entry) => level === 'all' || entry.level === level)
+  return <>
+    <header><div><p className="eyebrow">RUNTIME LOGS</p><h1>运行日志</h1><p>保留最近 500 条关键运行事件，重启后仍可查看。</p></div><div className="live-chip"><i /> {logs.length} 条</div></header>
+    <section className="log-panel">
+      <div className="log-toolbar"><div className="item-filters"><button className={level === 'all' ? 'active' : ''} onClick={() => setLevel('all')}>全部</button><button className={level === 'info' ? 'active' : ''} onClick={() => setLevel('info')}>信息</button><button className={level === 'warn' ? 'active' : ''} onClick={() => setLevel('warn')}>警告</button><button className={level === 'error' ? 'active' : ''} onClick={() => setLevel('error')}>错误</button></div><span>最新记录在前</span></div>
+      <div className="log-list">{visible.map((entry) => <div className={`log-entry ${entry.level}`} key={entry.id}><time>{logTime(entry.timestamp)}</time><b>{entry.level === 'info' ? '信息' : entry.level === 'warn' ? '警告' : '错误'}</b><span>{entry.message}</span></div>)}{!visible.length && <div className="empty-state compact"><b>暂无日志</b><span>监控运行后，关键事件会显示在这里。</span></div>}</div>
+    </section>
+  </>
+}
+
 function RemoveSubscriptionDialog({ subscription, onCancel, onRemove }: {
   subscription: Subscription
   onCancel: () => void
@@ -243,7 +259,7 @@ function QQBotPanel({ config, onSave, onTest, onSyncPanels }: {
 export function App(): JSX.Element {
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null)
   const [bootError, setBootError] = useState('')
-  const [page, setPage] = useState<'dashboard' | 'favorites' | 'settings'>('dashboard')
+  const [page, setPage] = useState<'dashboard' | 'favorites' | 'logs' | 'settings'>('dashboard')
   const [notice, setNotice] = useState('')
   const [qqConfig, setQQConfig] = useState<QQBotConfig | null>(null)
   const [itemFilter, setItemFilter] = useState<'all' | string>('all')
@@ -307,6 +323,7 @@ export function App(): JSX.Element {
         <nav>
           <button className={page === 'dashboard' ? 'active' : ''} onClick={() => setPage('dashboard')}><span>◫</span>监控面板</button>
           <button className={page === 'favorites' ? 'active' : ''} onClick={() => setPage('favorites')}><span>♥</span>我的收藏</button>
+          <button className={page === 'logs' ? 'active' : ''} onClick={() => setPage('logs')}><span>≡</span>运行日志</button>
           <button className={page === 'settings' ? 'active' : ''} onClick={() => setPage('settings')}><span>⚙</span>偏好设置</button>
         </nav>
         <div className="engine-state"><i /><div><b>监控引擎在线</b><span>{activeCount} 个任务运行中</span></div></div>
@@ -348,7 +365,7 @@ export function App(): JSX.Element {
           <section className="section-block favorites-page">
             <div className="favorite-grid">{snapshot.favorites.map((favorite) => <FavoriteCard key={favorite.id} item={favorite} onRemove={(id) => void action(window.mercariPulse.removeFavorite(id))} />)}{!snapshot.favorites.length && <div className="empty-state compact"><b>还没有收藏商品</b><span>在“监控面板 → 商品动态”中点击 ♥ 即可收藏并监控。</span></div>}</div>
           </section>
-        </> : <>
+        </> : page === 'logs' ? <LogPanel logs={snapshot.logs} /> : <>
           <header><div><p className="eyebrow">PREFERENCES</p><h1>偏好设置</h1><p>调整通知与默认轮询节奏</p></div></header>
           <section className="settings-panel">
             <Setting label="系统通知" detail="检测到上新时发送桌面通知"><label className="switch"><input type="checkbox" checked={snapshot.settings.notificationsEnabled} onChange={(e) => void action(window.mercariPulse.updateSettings({ notificationsEnabled: e.target.checked }))} /><span /></label></Setting>
