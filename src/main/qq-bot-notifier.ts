@@ -11,7 +11,6 @@ export interface QQDeliveryResult {
 interface QQPanelRecord {
   panel_id: string
   target_type: string
-  remark?: string
   panel?: { remark?: string }
 }
 
@@ -125,13 +124,12 @@ export class QQBotNotifier {
     return this.sendText(content, settings)
   }
 
-  /** Resets Ras Pulse's C2C/group command panels, then recreates the current pair. */
-  async syncCommandPanels(settings: AppSettings): Promise<{ created: number; updated: number; deleted: number; menuUpdated: boolean }> {
+  /** Creates or updates C2C's persistent menu and the C2C/group command panels. */
+  async syncCommandPanels(settings: AppSettings): Promise<{ created: number; updated: number; menuUpdated: boolean }> {
     const secret = await this.requireSecret(settings)
     const client = this.getClient(settings.qqBotAppId, secret)
     const panel = {
       items: [
-        { type: 'command', name: '/绑定名称 ', desc: '先填写昵称或群名称' },
         { type: 'command', name: '/添加关键词 ', desc: '选中后填写关键词' },
         { type: 'command', name: '/关键词 添加屏蔽词 ', desc: '例：相机 添加屏蔽词 故障' },
         { type: 'command', name: '/移除关键词 ', desc: '选中后填写关键词' },
@@ -146,7 +144,6 @@ export class QQBotNotifier {
         items: [
           {
             type: 'menu', name: '监控管理', sub_menu_items: [
-              { type: 'send_message', name: '绑定名称', send_message: '/绑定名称 ' },
               { type: 'send_message', name: '移除关键词', send_message: '/移除关键词 ' },
               { type: 'send_message', name: '关键词列表', send_message: '/关键词列表' },
               { type: 'send_message', name: '清除所有关键词', send_message: '/清除所有关键词' },
@@ -157,18 +154,19 @@ export class QQBotNotifier {
       }
     })
     let created = 0
-    let deleted = 0
+    let updated = 0
     for (const scope of ['c2c', 'group'] as const) {
       const response = await client.api.get<QQPanelListResponse>('/v2/panels', { scope, limit: 50 })
-      const stalePanels = (response.records ?? []).filter((record) => this.isRasPulsePanel(record))
-      for (const stalePanel of stalePanels) {
-        await client.api.delete(`/v2/panels/${encodeURIComponent(stalePanel.panel_id)}`)
-        deleted += 1
+      const existing = response.records?.find((record) => record.target_type === 'all' && record.panel?.remark === panel.remark)
+      if (existing) {
+        await client.api.put(`/v2/panels/${encodeURIComponent(existing.panel_id)}`, { panel })
+        updated += 1
+      } else {
+        await client.api.post('/v2/panels', { scope, target_type: 'all', panel })
+        created += 1
       }
-      await client.api.post('/v2/panels', { scope, target_type: 'all', panel })
-      created += 1
     }
-    return { created, updated: 0, deleted, menuUpdated: true }
+    return { created, updated, menuUpdated: true }
   }
 
   private formatItem(item: MercariItem, settings: AppSettings): string {
@@ -196,12 +194,11 @@ export class QQBotNotifier {
 
   private enabledTargets(settings: AppSettings, item?: MercariItem): QQBotTarget[] {
     const targets = settings.qqBotTargets.filter((target) => {
-      if (!target.enabled || !target.targetId.trim() || !target.bindingName?.trim()) return false
-      if (!item) return true
+      if (!target.enabled || !target.targetId.trim() || !item) return target.enabled && Boolean(target.targetId.trim())
       const subscription = target.keywords.find((value) => value.keyword.toLocaleLowerCase() === item.keyword.toLocaleLowerCase())
       return Boolean(subscription && !subscription.excludeKeywords.some((term) => item.name.toLocaleLowerCase().includes(term.toLocaleLowerCase())))
     })
-    if (!targets.length && !item) throw new Error('请至少绑定一个启用的 QQ 推送目标')
+    if (!targets.length && !item) throw new Error('请至少添加一个启用的 QQ 推送目标')
     return targets
   }
 
@@ -232,17 +229,12 @@ export class QQBotNotifier {
   }
 
   private targetName(target: QQBotTarget): string {
-    return target.bindingName || target.label || `${target.type === 'group' ? '群聊' : '私聊'} ${target.targetId}`
+    return target.label || `${target.type === 'group' ? '群聊' : '私聊'} ${target.targetId}`
   }
 
   private detectNickname(message: { senderName?: string; raw?: unknown }): string | undefined {
     const author = (message.raw as { author?: Record<string, unknown> } | undefined)?.author
     const candidates = [message.senderName, author?.username, author?.nickname, author?.nick]
     return candidates.find((value): value is string => typeof value === 'string' && Boolean(value.trim()))?.trim()
-  }
-
-  private isRasPulsePanel(record: QQPanelRecord): boolean {
-    const remark = record.panel?.remark ?? record.remark ?? ''
-    return remark.startsWith('ras-pulse-command-panel')
   }
 }
