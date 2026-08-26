@@ -218,7 +218,7 @@ export class QQBotNotifier {
         appId,
         appSecret: secret,
         logger: {
-          debug: (message) => console.debug(message),
+          debug: (message) => console.info(message),
           info: (message) => console.info(message),
           error: (message) => console.error(message)
         }
