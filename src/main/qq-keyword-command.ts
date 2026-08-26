@@ -7,11 +7,11 @@ export type QQKeywordCommand =
   | { type: 'list' }
   | { type: 'help' }
 
-/** Parses the short Chinese commands accepted by the QQ bot. */
+/** Parses the Chinese and concise English commands accepted by the QQ bot. */
 export function parseQQKeywordCommand(content: string): QQKeywordCommand | undefined {
   const value = content.replace(/<@!?(?:\\d+)>/g, '').trim()
   if (!value) return undefined
-  const bind = /^(?:\/)?(?:绑定|绑定名称|绑定昵称|绑定群名)\s+(.+)$/i.exec(value)
+  const bind = /^(?:\/)?(?:绑定|绑定名称|绑定昵称|绑定群名|bind)\s+(.+)$/i.exec(value)
   if (bind?.[1].trim()) return { type: 'bind', name: bind[1].trim() }
   if (/^(?:\/)?(?:关键词列表|我的关键词|列表|list)$/i.test(value)) return { type: 'list' }
   if (/^(?:\/)?(?:帮助|help|指令)$/i.test(value)) return { type: 'help' }
@@ -25,7 +25,7 @@ export function parseQQKeywordCommand(content: string): QQKeywordCommand | undef
   }
   const match = /^(?:\/)?(添加关键词|添加|订阅|add|移除关键词|移除|删除|取消|remove)\s+(.+)$/i.exec(value)
   if (!match) return undefined
-  const [keywordPart, excludePart = ''] = match[2].split(/\s+(?:屏蔽|排除)\s*/i, 2)
+  const [keywordPart, excludePart = ''] = match[2].split(/\s+(?:屏蔽|排除|exclude)\s*/i, 2)
   const keyword = keywordPart.trim()
   if (!keyword) return undefined
   if (/^(添加关键词|添加|订阅|add)$/i.test(match[1])) {
@@ -36,5 +36,5 @@ export function parseQQKeywordCommand(content: string): QQKeywordCommand | undef
 }
 
 export function qqKeywordHelp(): string {
-  return '关键词监控指令：\n绑定 名称\n添加关键词 相机\n添加关键词 バンドリ 屏蔽 バンドリエール、バンドリング\nバンドリ 添加屏蔽词 バンドリーノ、バンドリング\n移除关键词 相机\n关键词列表\n清除所有关键词 确认\n\n绑定会为当前私聊或群聊保存名称；添加后仅会收到自己订阅关键词的上新提醒，屏蔽词仅对当前私聊或群聊生效。'
+  return '关键词监控指令：\n/bind 名称\n/add 相机\n/add バンドリ exclude バンドリエール、バンドリング\n/remove 相机\n/list\n/clear confirm\n/help\n\n绑定会为当前私聊或群聊保存名称；添加后仅会收到自己订阅关键词的上新提醒，屏蔽词仅对当前私聊或群聊生效。'
 }

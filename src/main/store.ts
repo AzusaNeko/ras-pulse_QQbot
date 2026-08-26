@@ -46,7 +46,8 @@ export const defaultState: PersistedState = {
     qqBotAppId: '',
     qqBotTargets: [],
     qqCommandPanelIds: {},
-    qqCommandPanelAppId: ''
+    qqCommandPanelAppId: '',
+    qqBots: []
   },
   seenBySubscription: {},
   baselineReadyBySubscription: {},
@@ -67,6 +68,39 @@ function normalizeQQKeywords(value: unknown): QQBotKeyword[] {
         : []
     }]
   })
+}
+
+function normalizeQQBots(settings: Partial<AppSettings> | undefined): AppSettings['qqBots'] {
+  const storedBots = settings?.qqBots
+  if (Array.isArray(storedBots)) {
+    return storedBots.flatMap((entry) => {
+      if (!entry || typeof entry !== 'object') return []
+      const bot = entry as Partial<AppSettings['qqBots'][number]>
+      if (typeof bot.id !== 'string' || !bot.id.trim()) return []
+      const botId = bot.id
+      return [{
+        id: botId,
+        enabled: Boolean(bot.enabled),
+        appId: typeof bot.appId === 'string' ? bot.appId.trim() : '',
+        targets: Array.isArray(bot.targets) ? bot.targets.map((target) => ({
+          ...target,
+          botId,
+          label: /^自动发现的 QQ (?:群|私聊)$/.test(target.label ?? '') ? '' : target.label ?? '',
+          keywords: normalizeQQKeywords(target.keywords)
+        })) : [],
+        commandPanelIds: bot.commandPanelIds ?? {}
+      }]
+    })
+  }
+  // Migrate the v0.4.45-and-earlier single robot without losing subscriptions.
+  if (!settings?.qqBotAppId && !(settings?.qqBotTargets?.length)) return []
+  return [{
+    id: 'legacy-default',
+    enabled: Boolean(settings?.qqBotEnabled),
+    appId: settings?.qqBotAppId?.trim() ?? '',
+    targets: (settings?.qqBotTargets ?? []).map((target) => ({ ...target, botId: 'legacy-default', label: /^自动发现的 QQ (?:群|私聊)$/.test(target.label ?? '') ? '' : target.label ?? '', keywords: normalizeQQKeywords(target.keywords) })),
+    commandPanelIds: settings?.qqCommandPanelAppId === settings?.qqBotAppId ? settings?.qqCommandPanelIds ?? {} : {}
+  }]
 }
 
 function normalizeStoredItem<T extends MercariItem | FavoriteItem>(item: T): T {
@@ -132,9 +166,10 @@ export class JsonStore implements StateStore {
         settings: {
           ...defaultState.settings,
           ...parsed.settings,
-          qqBotTargets: (parsed.settings?.qqBotTargets ?? []).map((target) => ({ ...target, keywords: normalizeQQKeywords(target.keywords) })),
+          qqBotTargets: (parsed.settings?.qqBotTargets ?? []).map((target) => ({ ...target, botId: target.botId ?? 'legacy-default', keywords: normalizeQQKeywords(target.keywords) })),
           qqCommandPanelIds: parsed.settings?.qqCommandPanelIds ?? {},
-          qqCommandPanelAppId: parsed.settings?.qqCommandPanelAppId ?? ''
+          qqCommandPanelAppId: parsed.settings?.qqCommandPanelAppId ?? '',
+          qqBots: normalizeQQBots(parsed.settings)
         },
         subscriptions: (parsed.subscriptions ?? []).map((subscription) => ({ ...subscription, monitorUpdates: typeof subscription.monitorUpdates === 'boolean' ? subscription.monitorUpdates : true })),
         recentItems: (parsed.recentItems ?? []).map((item) => ({ ...normalizeStoredItem(item), isAuction: typeof item.isAuction === 'boolean' ? item.isAuction : undefined })),

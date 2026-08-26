@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, Notification, screen, shell, Tray } from 'electron'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { AppSettings, FavoriteUpdate, MercariItem, NewSubscription, QQBotConfig, SaveQQBotConfigInput, Subscription } from '../shared/types'
+import type { AppSettings, FavoriteUpdate, MercariItem, NewSubscription, QQBotAccount, QQBotConfig, QQBotTarget, SaveQQBotConfigInput, Subscription } from '../shared/types'
 import { MercariClient } from './mercari-client'
 import { isSupportedMercariImageUrl } from './mercari-item-url'
 import { MonitorEngine } from './monitor-engine'
@@ -16,6 +16,8 @@ let tray: Tray | null = null
 let quitting = false
 let engine: MonitorEngine
 let secretStore: SecretStore
+const qqNotifiers = new Map<string, QQBotNotifier>()
+// Legacy notifier is retained only while loading pre-v0.4.46 state; active robots use qqNotifiers.
 let qqNotifier: QQBotNotifier
 const activeNotifications = new Set<Notification>()
 const imageToastWindows = new Set<BrowserWindow>()
@@ -256,43 +258,43 @@ function registerIpc(): void {
   ipcMain.handle('qqbot:get-config', async (): Promise<QQBotConfig> => {
     const settings = engine.snapshot().settings
     return {
-      enabled: settings.qqBotEnabled,
-      appId: settings.qqBotAppId,
-      targets: settings.qqBotTargets,
-      secretConfigured: await secretStore.has()
+      bots: await Promise.all(settings.qqBots.map(async (bot) => ({ ...bot, secretConfigured: await secretStore.has(bot.id) })))
     }
   })
   ipcMain.handle('qqbot:save-config', async (_event, input: SaveQQBotConfigInput): Promise<QQBotConfig> => {
     const settings = engine.snapshot().settings
-    const appId = input.appId.trim()
-    if (input.enabled && !appId) throw new Error('开启 QQ 推送前请填写 AppID')
-    const targets = input.targets.map((target) => ({
+    const bot = input.bot
+    const appId = bot.appId.trim()
+    if (bot.enabled && !appId) throw new Error('开启 QQ 推送前请填写 AppID')
+    const targets = deduplicateQQTargets(bot.targets.map((target) => ({
       ...target,
+      botId: bot.id,
       targetId: target.targetId.trim(),
       label: target.label.trim(),
       enabled: Boolean(target.enabled)
-    })).filter((target) => target.targetId)
+    })).filter((target) => target.targetId))
     const secret = input.appSecret?.trim()
-    if (secret) await secretStore.set(secret)
-    if (input.enabled && !secret && !await secretStore.has()) throw new Error('开启 QQ 推送前请填写 AppSecret')
+    if (secret) await secretStore.set(bot.id, secret)
+    if (bot.enabled && !secret && !await secretStore.has(bot.id)) throw new Error('开启 QQ 推送前请填写 AppSecret')
+    const savedBot: QQBotAccount = { ...bot, appId, targets, commandPanelIds: bot.commandPanelIds ?? {} }
     await engine.updateSettings({
-      qqBotEnabled: Boolean(input.enabled),
-      qqBotAppId: appId,
-      qqBotTargets: targets,
-      qqCommandPanelAppId: appId,
-      qqCommandPanelIds: settings.qqCommandPanelAppId === appId ? settings.qqCommandPanelIds : {}
+      qqBots: settings.qqBots.map((entry) => entry.id === savedBot.id ? savedBot : entry)
     })
-    await qqNotifier.connect(engine.snapshot().settings)
-    return { enabled: Boolean(input.enabled), appId, targets, secretConfigured: await secretStore.has() }
+    await connectQQBots()
+    return { bots: await Promise.all(engine.snapshot().settings.qqBots.map(async (entry) => ({ ...entry, secretConfigured: await secretStore.has(entry.id) }))) }
   })
-  ipcMain.handle('qqbot:test', async () => {
+  ipcMain.handle('qqbot:test', async (_event, botId: string) => {
     const snapshot = engine.snapshot()
-    return qqNotifier.sendTest(snapshot.settings, snapshot.recentItems[0])
+    const bot = snapshot.settings.qqBots.find((entry) => entry.id === botId)
+    if (!bot) throw new Error('未找到 QQ 机器人配置')
+    return getQQNotifier(bot.id).sendTest(bot, snapshot.recentItems[0])
   })
-  ipcMain.handle('qqbot:sync-command-panels', async () => {
+  ipcMain.handle('qqbot:sync-command-panels', async (_event, botId: string) => {
     const settings = engine.snapshot().settings
-    const result = await qqNotifier.syncCommandPanels(settings)
-    await engine.updateSettings({ qqCommandPanelAppId: settings.qqBotAppId, qqCommandPanelIds: result.panelIds })
+    const bot = settings.qqBots.find((entry) => entry.id === botId)
+    if (!bot) throw new Error('未找到 QQ 机器人配置')
+    const result = await getQQNotifier(bot.id).syncCommandPanels(bot)
+    await engine.updateSettings({ qqBots: settings.qqBots.map((entry) => entry.id === bot.id ? { ...entry, commandPanelIds: result.panelIds } : entry) })
     return result
   })
   ipcMain.handle('settings:update', (_event, patch: Partial<AppSettings>) => engine.updateSettings(patch))
@@ -305,6 +307,90 @@ function registerIpc(): void {
   })
 }
 
+function deduplicateQQTargets(targets: QQBotTarget[]): QQBotTarget[] {
+  const result = new Map<string, QQBotTarget>()
+  for (const target of targets) {
+    const normalized: QQBotTarget = { ...target, targetId: target.targetId.trim(), label: target.label.trim() }
+    const key = normalized.targetId ? `${normalized.type}:${normalized.targetId}` : `draft:${normalized.id}`
+    const previous = result.get(key)
+    if (!previous) { result.set(key, normalized); continue }
+    const preferred = normalized.label && !previous.label ? normalized : previous
+    const other = preferred === previous ? normalized : previous
+    const keywords = [...preferred.keywords]
+    for (const incoming of other.keywords) {
+      const existing = keywords.find((entry) => entry.keyword.toLocaleLowerCase() === incoming.keyword.toLocaleLowerCase())
+      if (!existing) keywords.push(incoming)
+      else existing.excludeKeywords = [...new Set([...existing.excludeKeywords, ...incoming.excludeKeywords])]
+    }
+    result.set(key, { ...preferred, enabled: preferred.enabled || other.enabled, detectedNickname: preferred.detectedNickname ?? other.detectedNickname, keywords })
+  }
+  return [...result.values()]
+}
+
+function replaceBotTargets(botId: string, transform: (targets: QQBotTarget[]) => QQBotTarget[]): Promise<unknown> {
+  const settings = engine.snapshot().settings
+  return engine.updateSettings({ qqBots: settings.qqBots.map((bot) => bot.id === botId ? { ...bot, targets: deduplicateQQTargets(transform(bot.targets)) } : bot) })
+}
+
+function getQQNotifier(botId: string): QQBotNotifier {
+  const existing = qqNotifiers.get(botId)
+  if (existing) return existing
+  const notifier = new QQBotNotifier(secretStore, async (target) => {
+    const bot = engine.snapshot().settings.qqBots.find((entry) => entry.id === target.botId)
+    if (!bot) return
+    const current = bot.targets.find((entry) => entry.id === target.id)
+    if (!current) {
+      await replaceBotTargets(target.botId, (targets) => [...targets, target])
+      console.info(`已自动发现 QQ 推送目标：${target.type}:${target.targetId}`)
+    } else if (target.detectedNickname && target.detectedNickname !== current.detectedNickname) {
+      await replaceBotTargets(target.botId, (targets) => targets.map((entry) => entry.id === target.id ? { ...entry, detectedNickname: target.detectedNickname } : entry))
+    }
+  }, async (target, content) => {
+    const command = parseQQKeywordCommand(content)
+    if (!command) return '指令错误 可以先在帮助中查看指令'
+    if (command.type === 'help') return qqKeywordHelp()
+    const bot = engine.snapshot().settings.qqBots.find((entry) => entry.id === target.botId)
+    const currentTarget = bot?.targets.find((entry) => entry.id === target.id)
+    if (!bot || !currentTarget) return '目标初始化中，请稍后再试。'
+    if (command.type === 'bind') {
+      await replaceBotTargets(bot.id, (targets) => targets.map((entry) => entry.id === target.id ? { ...entry, label: command.name } : entry))
+      return `已绑定当前${target.type === 'group' ? '群聊' : '私聊'}为“${command.name}”。`
+    }
+    if (!currentTarget.label.trim()) return '请先完成绑定后再使用其他指令。请发送：/bind 名称'
+    if (command.type === 'list') return currentTarget.keywords.length ? `你的监控关键词：\n${currentTarget.keywords.map((entry, index) => `${index + 1}. ${entry.keyword}${entry.excludeKeywords.length ? `（屏蔽：${entry.excludeKeywords.join('、')}）` : ''}`).join('\n')}` : `你还没有订阅关键词。\n\n${qqKeywordHelp()}`
+    if (command.type === 'clear') {
+      if (!command.confirmed) return `将清除当前${target.type === 'group' ? '群聊' : '私聊'}的全部 ${currentTarget.keywords.length} 个关键词订阅。\n如确认，请发送：/clear confirm`
+      await replaceBotTargets(bot.id, (targets) => targets.map((entry) => entry.id === target.id ? { ...entry, keywords: [] } : entry))
+      return '已清除当前会话的全部关键词订阅。不会影响其他用户、群聊或机器人。'
+    }
+    const normalized = command.keyword.toLocaleLowerCase()
+    if (command.type === 'add') {
+      if (currentTarget.keywords.some((entry) => entry.keyword.toLocaleLowerCase() === normalized)) return `你已经订阅了“${command.keyword}”。`
+      await replaceBotTargets(bot.id, (targets) => targets.map((entry) => entry.id === target.id ? { ...entry, keywords: [...entry.keywords, { keyword: command.keyword, excludeKeywords: command.excludeKeywords }] } : entry))
+      if (!engine.snapshot().subscriptions.some((entry) => entry.keyword.toLocaleLowerCase() === normalized)) await engine.add({ keyword: command.keyword, initialDisplayCount: 2 })
+      return `已添加关键词“${command.keyword}”。`
+    }
+    const matching = currentTarget.keywords.find((entry) => entry.keyword.toLocaleLowerCase() === normalized)
+    if (!matching) return `你尚未订阅“${command.keyword}”。`
+    if (command.type === 'add-exclude') {
+      const additions = command.excludeKeywords.filter((term) => !matching.excludeKeywords.some((known) => known.toLocaleLowerCase() === term.toLocaleLowerCase()))
+      if (!additions.length) return `“${matching.keyword}”中的这些屏蔽词已存在。`
+      await replaceBotTargets(bot.id, (targets) => targets.map((entry) => entry.id === target.id ? { ...entry, keywords: entry.keywords.map((keyword) => keyword.keyword.toLocaleLowerCase() === normalized ? { ...keyword, excludeKeywords: [...keyword.excludeKeywords, ...additions] } : keyword) } : entry))
+      return `已为“${matching.keyword}”添加屏蔽词：${additions.join('、')}。`
+    }
+    await replaceBotTargets(bot.id, (targets) => targets.map((entry) => entry.id === target.id ? { ...entry, keywords: entry.keywords.filter((keyword) => keyword.keyword.toLocaleLowerCase() !== normalized) } : entry))
+    return `已移除关键词“${matching.keyword}”。`
+  }, (level, message) => void engine.recordDiagnostic(level, message).catch((error) => console.error(`QQ 诊断日志写入失败：${error}`)))
+  qqNotifiers.set(botId, notifier)
+  return notifier
+}
+
+async function connectQQBots(): Promise<void> {
+  const bots = engine.snapshot().settings.qqBots
+  for (const [id, notifier] of qqNotifiers) if (!bots.some((bot) => bot.id === id && bot.enabled)) notifier.stop()
+  await Promise.all(bots.filter((bot) => bot.enabled).map((bot) => getQQNotifier(bot.id).connect(bot)))
+}
+
 app.whenReady().then(async () => {
   if (!hasSingleInstanceLock) return
   const userData = app.getPath('userData')
@@ -312,6 +398,11 @@ app.whenReady().then(async () => {
   const mercariClient = new MercariClient((input, init) => net.fetch(input, init))
   engine = new MonitorEngine(mercariClient, new JsonStore(join(userData, 'state.json')))
   await engine.start()
+  const storedBots = engine.snapshot().settings.qqBots
+  const normalizedBots = storedBots.map((bot) => ({ ...bot, targets: deduplicateQQTargets(bot.targets) }))
+  if (normalizedBots.some((bot, index) => bot.targets.length !== storedBots[index]?.targets.length)) {
+    await engine.updateSettings({ qqBots: normalizedBots })
+  }
   qqNotifier = new QQBotNotifier(secretStore, async (target) => {
     const settings = engine.snapshot().settings
     const existing = settings.qqBotTargets.find((item) => item.id === target.id)
@@ -344,7 +435,7 @@ app.whenReady().then(async () => {
         : `你还没有订阅关键词。\n\n${qqKeywordHelp()}`
     }
     if (command.type === 'clear') {
-      if (!command.confirmed) return `将清除当前${target.type === 'group' ? '群聊' : '私聊'}的全部 ${currentTarget.keywords.length} 个关键词订阅。\n如确认，请发送：清除所有关键词 确认`
+      if (!command.confirmed) return `将清除当前${target.type === 'group' ? '群聊' : '私聊'}的全部 ${currentTarget.keywords.length} 个关键词订阅。\n如确认，请发送：/clear confirm`
       if (!currentTarget.keywords.length) return '你还没有订阅关键词。'
       await engine.updateSettings({
         qqBotTargets: settings.qqBotTargets.map((item) => item.id === target.id ? { ...item, keywords: [] } : item)
@@ -391,20 +482,16 @@ app.whenReady().then(async () => {
     if (settings.notificationsEnabled) {
       void showProductNotification(item, settings)
     }
-    if (settings.qqBotEnabled) {
-      void qqNotifier.sendItem(item, settings).then((result) => {
-        if (result.failed) console.warn(`QQ 推送部分失败：成功 ${result.delivered}，失败 ${result.failed}`)
-      }).catch((error) => console.error(`QQ 推送失败：${error instanceof Error ? error.message : String(error)}`))
-    }
+    void Promise.allSettled(settings.qqBots.filter((bot) => bot.enabled).map((bot) => getQQNotifier(bot.id).sendItem(item, bot))).then((results) => {
+      for (const result of results) if (result.status === 'rejected') console.error(`QQ 推送失败：${result.reason instanceof Error ? result.reason.message : String(result.reason)}`)
+    })
   })
   engine.on('favoriteUpdate', (favoriteUpdate) => {
     broadcast({ type: 'favorite-update', favoriteUpdate })
     if (engine.snapshot().settings.notificationsEnabled) showFavoriteNotification(favoriteUpdate, engine.snapshot().settings)
   })
   registerIpc()
-  if (engine.snapshot().settings.qqBotEnabled) {
-    void qqNotifier.connect(engine.snapshot().settings).catch((error) => console.error(`QQ 机器人自动连接失败：${error instanceof Error ? error.message : String(error)}`))
-  }
+  void connectQQBots().catch((error) => console.error(`QQ 机器人自动连接失败：${error instanceof Error ? error.message : String(error)}`))
   createWindow()
   createTray()
 
@@ -419,6 +506,7 @@ app.on('before-quit', () => {
   quitting = true
   engine?.stop()
   qqNotifier?.stop()
+  for (const notifier of qqNotifiers.values()) notifier.stop()
 })
 
 app.on('window-all-closed', () => {

@@ -1,5 +1,5 @@
 import { QQBot } from '@tencent-connect/qqbot-nodejs'
-import type { AppSettings, LogLevel, MercariItem, QQBotTarget, QQBotTargetType } from '../shared/types'
+import type { LogLevel, MercariItem, QQBotAccount, QQBotTarget, QQBotTargetType } from '../shared/types'
 import { isSupportedMercariImageUrl } from './mercari-item-url'
 import { SecretStore } from './secret-store'
 
@@ -21,16 +21,16 @@ export class QQBotNotifier {
   ) {}
 
   /** Starts the WebSocket gateway so QQ reports the bot as connected and targets can be discovered. */
-  async connect(settings: AppSettings): Promise<void> {
-    if (!settings.qqBotEnabled) {
+  async connect(bot: QQBotAccount): Promise<void> {
+    if (!bot.enabled) {
       this.stop()
       return
     }
-    const secret = await this.requireSecret(settings)
-    const key = `${settings.qqBotAppId}\u0000${secret}`
+    const secret = await this.requireSecret(bot)
+    const key = `${bot.appId}\u0000${secret}`
     if (this.receivingKey === key) return
     this.stop()
-    const client = this.getClient(settings.qqBotAppId, secret)
+    const client = this.getClient(bot.appId, secret)
     this.receivingKey = key
     client.on('ready', () => console.info('QQ 机器人服务已连接'))
     client.on('error', (error) => console.error(`QQ 机器人服务异常：${error.message}`))
@@ -38,10 +38,12 @@ export class QQBotNotifier {
       const target = message.replyTarget
       if (target.scope !== 'c2c' && target.scope !== 'group') return
       const discoveredTarget: QQBotTarget = {
-        id: `${target.scope}:${target.targetId}`,
+        id: `${bot.id}:${target.scope}:${target.targetId}`,
+        botId: bot.id,
         type: target.scope,
         targetId: target.targetId,
-        label: target.scope === 'group' ? '自动发现的 QQ 群' : '自动发现的 QQ 私聊',
+        // A discovered target is intentionally unbound until it sends /bind 名称.
+        label: '',
         detectedNickname: this.detectNickname(message),
         enabled: true,
         keywords: []
@@ -61,12 +63,12 @@ export class QQBotNotifier {
     this.receivingKey = ''
   }
 
-  async sendItem(item: MercariItem, settings: AppSettings): Promise<QQDeliveryResult> {
-    const content = this.formatItem(item, settings)
-    if (!settings.qqBotEnabled) throw new Error('请先开启 QQ 机器人推送')
-    const targets = this.enabledTargets(settings, item)
-    const secret = await this.requireSecret(settings)
-    const client = this.getClient(settings.qqBotAppId, secret)
+  async sendItem(item: MercariItem, bot: QQBotAccount): Promise<QQDeliveryResult> {
+    const content = this.formatItem(item)
+    if (!bot.enabled) throw new Error('请先开启 QQ 机器人推送')
+    const targets = this.enabledTargets(bot, item)
+    const secret = await this.requireSecret(bot)
+    const client = this.getClient(bot.appId, secret)
     // Text arrives first; image work must never delay a time-sensitive listing alert.
     const outcomes = await Promise.allSettled(targets.map((target) => client.sendText({
       scope: target.type,
@@ -108,49 +110,34 @@ export class QQBotNotifier {
     }
   }
 
-  async sendTest(settings: AppSettings, item?: MercariItem): Promise<QQDeliveryResult> {
+  async sendTest(bot: QQBotAccount, item?: MercariItem): Promise<QQDeliveryResult> {
     const content = item
-      ? `【测试推送】\n${this.formatItem(item, settings)}`
+      ? `【测试推送】\n${this.formatItem(item)}`
       : '【Ras Pulse 测试推送】\nQQ 机器人连接正常。后续检测到日本二手商品上新时，会在这里提醒你。'
-    return this.sendText(content, settings)
+    return this.sendText(content, bot)
   }
 
   /** Creates panels once, then updates their stored IDs on every later sync. */
-  async syncCommandPanels(settings: AppSettings): Promise<{ created: number; updated: number; menuUpdated: boolean; panelIds: Partial<Record<QQBotTargetType, string>> }> {
-    const secret = await this.requireSecret(settings)
-    const client = this.getClient(settings.qqBotAppId, secret)
+  /** Synchronizes QQ command panels only. C2C custom menus are deliberately not managed here. */
+  async syncCommandPanels(bot: QQBotAccount): Promise<{ created: number; updated: number; panelIds: Partial<Record<QQBotTargetType, string>> }> {
+    const secret = await this.requireSecret(bot)
+    const client = this.getClient(bot.appId, secret)
     const panel = {
       items: [
-        { type: 'command', name: '/绑定 ', desc: '为当前会话填写名称' },
-        { type: 'command', name: '/添加关键词 ', desc: '选中后填写关键词' },
-        { type: 'command', name: '/关键词 添加屏蔽词 ', desc: '例：相机 添加屏蔽词 故障' },
-        { type: 'command', name: '/移除关键词 ', desc: '选中后填写关键词' },
-        { type: 'command', name: '/关键词列表', desc: '查看我的订阅' },
-        { type: 'command', name: '/清除全部', desc: '清空前会要求确认' },
-        { type: 'command', name: '/帮助', desc: '查看使用说明' }
+        { type: 'command', name: '/bind ', desc: '为当前会话填写名称' },
+        { type: 'command', name: '/add ', desc: '选中后填写关键词' },
+        { type: 'command', name: '/remove ', desc: '选中后填写关键词' },
+        { type: 'command', name: '/list', desc: '查看我的订阅' },
+        { type: 'command', name: '/clear', desc: '清空前会要求确认' },
+        { type: 'command', name: '/help', desc: '查看使用说明' }
       ],
-      remark: 'ras-pulse-command-panel-v4'
+      remark: 'ras-pulse-command-panel-v5'
     }
-    await client.api.put('/v2/menu', {
-      menu: {
-        items: [
-          {
-            type: 'menu', name: '监控管理', sub_menu_items: [
-              { type: 'send_message', name: '绑定名称', send_message: '/绑定 ' },
-              { type: 'send_message', name: '移除关键词', send_message: '/移除关键词 ' },
-              { type: 'send_message', name: '关键词列表', send_message: '/关键词列表' },
-              { type: 'send_message', name: '清除所有关键词', send_message: '/清除所有关键词' },
-              { type: 'send_message', name: '帮助', send_message: '/帮助' }
-            ]
-          }
-        ]
-      }
-    })
-    const panelIds = settings.qqCommandPanelAppId === settings.qqBotAppId ? { ...settings.qqCommandPanelIds } : {}
+    const panelIds = { ...bot.commandPanelIds }
     let created = 0
     let updated = 0
     for (const scope of ['c2c', 'group'] as const) {
-      const targetIds = [...new Set(settings.qqBotTargets
+      const targetIds = [...new Set(bot.targets
         .filter((target) => target.enabled && target.type === scope && Boolean(target.targetId.trim()))
         .map((target) => target.targetId.trim()))].slice(0, 20)
       // Specific panels work for the actual QQ recipients and avoid the platform's
@@ -177,11 +164,10 @@ export class QQBotNotifier {
       panelIds[scope] = createdPanel.panel_id
       created += 1
     }
-    return { created, updated, menuUpdated: true, panelIds }
+    return { created, updated, panelIds }
   }
 
-  private formatItem(item: MercariItem, settings: AppSettings): string {
-    void settings
+  private formatItem(item: MercariItem): string {
     return [
       `${item.discoveryType === 'updated' ? '【旧商品更新】' : '【发现上新】'}${item.keyword}`,
       `商品：${item.name}`,
@@ -191,11 +177,11 @@ export class QQBotNotifier {
     ].join('\n')
   }
 
-  private async sendText(content: string, settings: AppSettings): Promise<QQDeliveryResult> {
-    if (!settings.qqBotEnabled) throw new Error('请先开启 QQ 机器人推送')
-    const targets = this.enabledTargets(settings)
-    const secret = await this.requireSecret(settings)
-    const client = this.getClient(settings.qqBotAppId, secret)
+  private async sendText(content: string, bot: QQBotAccount): Promise<QQDeliveryResult> {
+    if (!bot.enabled) throw new Error('请先开启 QQ 机器人推送')
+    const targets = this.enabledTargets(bot)
+    const secret = await this.requireSecret(bot)
+    const client = this.getClient(bot.appId, secret)
     const outcomes = await Promise.allSettled(targets.map((target) => client.sendText({
       scope: target.type,
       targetId: target.targetId.trim()
@@ -203,13 +189,14 @@ export class QQBotNotifier {
     return this.summarizeOutcomes(outcomes, targets)
   }
 
-  private enabledTargets(settings: AppSettings, item?: MercariItem): QQBotTarget[] {
-    const targets = settings.qqBotTargets.filter((target) => {
-      if (!target.enabled || !target.targetId.trim() || !item) return target.enabled && Boolean(target.targetId.trim())
+  private enabledTargets(bot: QQBotAccount, item?: MercariItem): QQBotTarget[] {
+    const targets = bot.targets.filter((target) => {
+      if (!target.enabled || !target.targetId.trim() || !target.label.trim()) return false
+      if (!item) return true
       const subscription = target.keywords.find((value) => value.keyword.toLocaleLowerCase() === item.keyword.toLocaleLowerCase())
       return Boolean(subscription && !subscription.excludeKeywords.some((term) => item.name.toLocaleLowerCase().includes(term.toLocaleLowerCase())))
     })
-    if (!targets.length && !item) throw new Error('请至少添加一个启用的 QQ 推送目标')
+    if (!targets.length && !item) throw new Error('请至少添加一个已绑定且启用的 QQ 推送目标')
     return targets
   }
 
@@ -240,9 +227,9 @@ export class QQBotNotifier {
     return this.client
   }
 
-  private async requireSecret(settings: AppSettings): Promise<string> {
-    if (!settings.qqBotAppId.trim()) throw new Error('请填写 QQ AppID')
-    const secret = await this.secrets.get()
+  private async requireSecret(bot: QQBotAccount): Promise<string> {
+    if (!bot.appId.trim()) throw new Error('请填写 QQ AppID')
+    const secret = await this.secrets.get(bot.id)
     if (!secret) throw new Error('请填写并保存 QQ AppSecret')
     return secret
   }

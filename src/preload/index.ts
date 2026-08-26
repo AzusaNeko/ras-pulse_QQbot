@@ -14,8 +14,8 @@ contextBridge.exposeInMainWorld('mercariPulse', {
   testNotification: () => ipcRenderer.invoke('notifications:test'),
   getQQBotConfig: () => ipcRenderer.invoke('qqbot:get-config'),
   saveQQBotConfig: (input: SaveQQBotConfigInput) => ipcRenderer.invoke('qqbot:save-config', input),
-  testQQBot: () => ipcRenderer.invoke('qqbot:test'),
-  syncQQCommandPanels: (): Promise<QQCommandPanelSyncResult> => ipcRenderer.invoke('qqbot:sync-command-panels'),
+  testQQBot: (botId: string) => ipcRenderer.invoke('qqbot:test', botId),
+  syncQQCommandPanels: (botId: string): Promise<QQCommandPanelSyncResult> => ipcRenderer.invoke('qqbot:sync-command-panels', botId),
   openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url),
   onMonitorEvent: (listener: (event: MonitorEvent) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, value: MonitorEvent): void => listener(value)

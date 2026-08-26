@@ -88,9 +88,20 @@ export interface AppSettings {
   qqCommandPanelIds: Partial<Record<QQBotTargetType, string>>
   /** AppID that owns qqCommandPanelIds. */
   qqCommandPanelAppId: string
+  /** QQ robot accounts. The legacy single-account fields above are retained only for migration. */
+  qqBots: QQBotAccount[]
 }
 
 export type QQBotTargetType = 'group' | 'c2c'
+
+export interface QQBotAccount {
+  id: string
+  enabled: boolean
+  appId: string
+  targets: QQBotTarget[]
+  /** QQ panel IDs created for this robot; updated instead of recreated. */
+  commandPanelIds: Partial<Record<QQBotTargetType, string>>
+}
 
 export interface QQBotKeyword {
   /** The monitored search term. */
@@ -101,6 +112,8 @@ export interface QQBotKeyword {
 
 export interface QQBotTarget {
   id: string
+  /** Owning QQ robot account. */
+  botId: string
   type: QQBotTargetType
   targetId: string
   label: string
@@ -112,23 +125,17 @@ export interface QQBotTarget {
 }
 
 export interface QQBotConfig {
-  enabled: boolean
-  appId: string
-  targets: QQBotTarget[]
-  secretConfigured: boolean
+  bots: Array<QQBotAccount & { secretConfigured: boolean }>
 }
 
 export interface QQCommandPanelSyncResult {
   created: number
   updated: number
-  menuUpdated: boolean
   panelIds: Partial<Record<QQBotTargetType, string>>
 }
 
 export interface SaveQQBotConfigInput {
-  enabled: boolean
-  appId: string
-  targets: QQBotTarget[]
+  bot: QQBotAccount
   /** Empty keeps the existing local secret. It is never returned to the renderer. */
   appSecret?: string
 }
@@ -172,8 +179,8 @@ export interface MercariPulseApi {
   testNotification(): Promise<{ supported: boolean }>
   getQQBotConfig(): Promise<QQBotConfig>
   saveQQBotConfig(input: SaveQQBotConfigInput): Promise<QQBotConfig>
-  testQQBot(): Promise<{ delivered: number; failed: number }>
-  syncQQCommandPanels(): Promise<QQCommandPanelSyncResult>
+  testQQBot(botId: string): Promise<{ delivered: number; failed: number }>
+  syncQQCommandPanels(botId: string): Promise<QQCommandPanelSyncResult>
   openExternal(url: string): Promise<void>
   onMonitorEvent(listener: (event: MonitorEvent) => void): () => void
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type JSX, type ReactNode } from 'react'
-import type { AppSnapshot, FavoriteItem, LogEntry, MercariItem, MonitorStatus, NewSubscription, QQBotConfig, QQBotTarget, Subscription } from '../../shared/types'
+import type { AppSnapshot, FavoriteItem, LogEntry, MercariItem, MonitorStatus, NewSubscription, QQBotAccount, QQBotConfig, QQBotTarget, Subscription } from '../../shared/types'
 import { isSoldMercariStatus } from '../../shared/mercari-status'
 
 const statusLabels: Record<MonitorStatus, string> = {
@@ -31,18 +31,6 @@ function listingTime(item: MercariItem): string {
   if (!item.createdAt) return `检测 ${timeAgo(item.detectedAt)}`
   const timestamp = item.createdAt > 10_000_000_000 ? item.createdAt : item.createdAt * 1_000
   return `上架 ${timeAgo(timestamp)}`
-}
-
-function sameQQTargets(left: QQBotTarget[], right: QQBotTarget[]): boolean {
-  return left.length === right.length && left.every((target, index) => {
-    const other = right[index]
-    return target.id === other.id && target.type === other.type && target.targetId === other.targetId && target.label === other.label
-      && target.detectedNickname === other.detectedNickname && target.enabled === other.enabled
-      && target.keywords.length === other.keywords.length && target.keywords.every((keyword, keywordIndex) => {
-        const otherKeyword = other.keywords[keywordIndex]
-        return keyword.keyword === otherKeyword?.keyword && keyword.excludeKeywords.join('\u0000') === otherKeyword.excludeKeywords.join('\u0000')
-      })
-  })
 }
 
 function ItemCard({ item, favorite, onFavorite, onDelete }: { item: MercariItem; favorite: boolean; onFavorite: (item: MercariItem) => void; onDelete: (item: MercariItem) => void }): JSX.Element | null {
@@ -79,6 +67,7 @@ function SubscriptionCard({ item, qqTargets, fastTaken, onChange, onDelete, onCh
 }): JSX.Element {
   const [addingExclusions, setAddingExclusions] = useState(false)
   const [excludeInput, setExcludeInput] = useState('')
+  const [detailsExpanded, setDetailsExpanded] = useState(false)
   const addExclude = (): void => {
     const existing = item.excludeKeyword.split(/[，,、\n]/).map((term) => term.trim()).filter(Boolean)
     const known = new Set(existing.map((term) => term.toLocaleLowerCase()))
@@ -95,23 +84,26 @@ function SubscriptionCard({ item, qqTargets, fastTaken, onChange, onDelete, onCh
         <div className="status-orbit"><span /></div>
         <div className="subscription-copy">
           <div className="subscription-title"><h3>{item.keyword}</h3><span className="status-label">{item.cooldownUntil && item.cooldownUntil > Date.now() ? '冷却中' : statusLabels[item.status]}</span></div>
-          <p>
-            {item.excludeKeyword && `排除：${item.excludeKeyword} · `}
-            {item.minPrice != null || item.maxPrice != null
-              ? `${item.minPrice ? price(item.minPrice) : '不限'} — ${item.maxPrice ? price(item.maxPrice) : '不限'} · ` : ''}
-            首次 {item.initialDisplayCount ?? 2} 条 · 每 <select className="inline-interval" value={item.intervalMs} onChange={(event) => onChange(item.id, { intervalMs: Number(event.target.value) })}><option value="500" disabled={item.intervalMs > 500 && fastTaken}>0.5 秒（极速）</option><option value="1000">1 秒</option><option value="2000">2 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option></select> · <label className="inline-check"><input type="checkbox" checked={item.monitorUpdates} onChange={(event) => onChange(item.id, { monitorUpdates: event.target.checked })} />旧商品更新</label>
-          </p>
           <small title={item.error}>{item.error ? item.error : `上次成功：${timeAgo(item.lastSuccessAt)}`}</small>
-          {qqSubscribers.length > 0 && <div className="subscription-qq-targets"><b>QQ 推送：</b>{qqSubscribers.map((target) => <span key={target.id} title={target.targetId}>{target.type === 'group' ? '群聊' : '私聊'} · {target.label || target.detectedNickname || target.targetId}{target.detectedNickname && target.label ? `（${target.detectedNickname}）` : ''}{!target.enabled ? '（已停用）' : ''}</span>)}</div>}
-          {addingExclusions && <form className="exclude-editor" onSubmit={(event) => { event.preventDefault(); addExclude() }}>
-            <input autoFocus value={excludeInput} onChange={(event) => setExcludeInput(event.target.value)} placeholder="输入屏蔽词，多个用逗号分隔" />
-            <button className="secondary-button" type="submit" disabled={!excludeInput.trim()}>添加</button>
-            <button className="text-button" type="button" onClick={() => { setExcludeInput(''); setAddingExclusions(false) }}>取消</button>
-          </form>}
+          {detailsExpanded && <div className="subscription-details">
+            <p>
+              {item.excludeKeyword && `排除：${item.excludeKeyword} · `}
+              {item.minPrice != null || item.maxPrice != null
+                ? `${item.minPrice ? price(item.minPrice) : '不限'} — ${item.maxPrice ? price(item.maxPrice) : '不限'} · ` : ''}
+              首次 {item.initialDisplayCount ?? 2} 条 · 每 <select className="inline-interval" value={item.intervalMs} onChange={(event) => onChange(item.id, { intervalMs: Number(event.target.value) })}><option value="500" disabled={item.intervalMs > 500 && fastTaken}>0.5 秒（极速）</option><option value="1000">1 秒</option><option value="2000">2 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option></select> · <label className="inline-check"><input type="checkbox" checked={item.monitorUpdates} onChange={(event) => onChange(item.id, { monitorUpdates: event.target.checked })} />旧商品更新</label>
+            </p>
+            {qqSubscribers.length > 0 && <div className="subscription-qq-targets"><b>QQ 推送：</b>{qqSubscribers.map((target) => <span key={target.id} title={target.targetId}>{target.type === 'group' ? '群聊' : '私聊'} · {target.label || target.detectedNickname || target.targetId}{target.detectedNickname && target.label ? `（${target.detectedNickname}）` : ''}{!target.enabled ? '（已停用）' : ''}</span>)}</div>}
+            {addingExclusions && <form className="exclude-editor" onSubmit={(event) => { event.preventDefault(); addExclude() }}>
+              <input autoFocus value={excludeInput} onChange={(event) => setExcludeInput(event.target.value)} placeholder="输入屏蔽词，多个用逗号分隔" />
+              <button className="secondary-button" type="submit" disabled={!excludeInput.trim()}>添加</button>
+              <button className="text-button" type="button" onClick={() => { setExcludeInput(''); setAddingExclusions(false) }}>取消</button>
+            </form>}
+          </div>}
         </div>
       </div>
       <div className="card-actions">
-        <button className="icon-button" title="添加屏蔽词" onClick={() => setAddingExclusions(true)}>⊘</button>
+        <button className="icon-button" title={detailsExpanded ? '收起详细信息' : '展开详细信息'} onClick={() => setDetailsExpanded((value) => !value)}>{detailsExpanded ? '⌃' : '⌄'}</button>
+        <button className="icon-button" title="添加屏蔽词" onClick={() => { setDetailsExpanded(true); setAddingExclusions(true) }}>⊘</button>
         <button className="icon-button" title="立即检查" onClick={() => onCheck(item.id)}>↻</button>
         <label className="switch" title={item.enabled ? '暂停' : '启用'}>
           <input type="checkbox" checked={item.enabled} onChange={(event) => onChange(item.id, { enabled: event.target.checked, status: event.target.checked ? 'watching' : 'paused' })} />
@@ -212,32 +204,33 @@ function RemoveSubscriptionDialog({ subscription, onCancel, onRemove }: {
   </div>
 }
 
-function QQBotPanel({ config, onSave, onTest, onSyncPanels }: {
-  config: QQBotConfig
-  onSave: (value: { enabled: boolean; appId: string; targets: QQBotTarget[]; appSecret?: string }) => Promise<void>
+function QQBotPanel({ bot, secretConfigured, onSave, onTest, onSyncPanels }: {
+  bot: QQBotAccount
+  secretConfigured: boolean
+  onSave: (value: { bot: QQBotAccount; appSecret?: string }) => Promise<void>
   onTest: () => Promise<void>
   onSyncPanels: () => Promise<void>
 }): JSX.Element {
-  const [enabled, setEnabled] = useState(config.enabled)
-  const [appId, setAppId] = useState(config.appId)
+  const [enabled, setEnabled] = useState(bot.enabled)
+  const [appId, setAppId] = useState(bot.appId)
   const [secret, setSecret] = useState('')
-  const [targets, setTargets] = useState(config.targets)
+  const [targets, setTargets] = useState(bot.targets)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    setEnabled(config.enabled); setAppId(config.appId); setTargets(config.targets)
-  }, [config])
+    setEnabled(bot.enabled); setAppId(bot.appId); setTargets(bot.targets)
+  }, [bot])
 
   const changeTarget = (id: string, patch: Partial<QQBotTarget>): void => {
     setTargets((items) => items.map((item) => item.id === id ? { ...item, ...patch } : item))
   }
   const addTarget = (): void => setTargets((items) => [...items, {
-    id: crypto.randomUUID(), type: 'group', targetId: '', label: '', enabled: true, keywords: []
+    id: `${bot.id}:${crypto.randomUUID()}`, botId: bot.id, type: 'group', targetId: '', label: '', enabled: true, keywords: []
   }])
   const save = async (): Promise<void> => {
     setBusy(true)
     try {
-      await onSave({ enabled, appId, targets, appSecret: secret || undefined })
+      await onSave({ bot: { ...bot, enabled, appId, targets }, appSecret: secret || undefined })
       setSecret('')
     } finally { setBusy(false) }
   }
@@ -246,7 +239,7 @@ function QQBotPanel({ config, onSave, onTest, onSyncPanels }: {
     <div className="qq-panel-heading"><div><p className="eyebrow">QQ BOT</p><h2>QQ 机器人推送</h2><span>AppSecret 使用 Windows 加密存储，不会显示或上传到 GitHub。</span></div><label className="switch" title={enabled ? '关闭 QQ 推送' : '开启 QQ 推送'}><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /><span /></label></div>
     <div className="qq-fields">
       <label>AppID<input value={appId} onChange={(event) => setAppId(event.target.value)} inputMode="numeric" placeholder="QQ 开放平台 AppID" /></label>
-      <label>AppSecret {config.secretConfigured && <em>已保存</em>}<input value={secret} onChange={(event) => setSecret(event.target.value)} type="password" autoComplete="new-password" placeholder={config.secretConfigured ? '留空则保留当前密钥' : '仅保存到本机'} /></label>
+      <label>AppSecret {secretConfigured && <em>已保存</em>}<input value={secret} onChange={(event) => setSecret(event.target.value)} type="password" autoComplete="new-password" placeholder={secretConfigured ? '留空则保留当前密钥' : '仅保存到本机'} /></label>
     </div>
     <div className="qq-target-heading"><div><b>推送目标</b><span>填写 QQ 开放平台提供的 openid / group_openid，不是 QQ 号或群号。</span></div><button className="secondary-button" type="button" onClick={addTarget}>+ 添加目标</button></div>
     <div className="qq-targets">
@@ -260,18 +253,35 @@ function QQBotPanel({ config, onSave, onTest, onSyncPanels }: {
       </div>)}
       {!targets.length && <div className="qq-empty">保存开启后，私聊机器人或在群内 @ 机器人一次，软件会自动发现并添加对应目标。</div>}
     </div>
-    <p className="qq-command-hint">机器人指令：<code>添加关键词 相机</code>、<code>バンドリ 添加屏蔽词 バンドリング</code>、<code>移除关键词 相机</code>、<code>关键词列表</code>。屏蔽词仅作用于该私聊或群聊。</p>
-    <div className="qq-actions"><button className="secondary-button" type="button" disabled={busy} onClick={() => void save()}>{busy ? '保存中…' : '保存 QQ 配置'}</button><button className="secondary-button" type="button" disabled={busy} onClick={() => void onSyncPanels()}>同步 QQ 菜单与指令</button><button className="secondary-button" type="button" disabled={busy} onClick={() => void onTest()}>发送 QQ 测试消息</button></div>
+    <p className="qq-command-hint">机器人指令：<code>/bind 名称</code>、<code>/add 相机</code>、<code>/add バンドリ exclude バンドリング</code>、<code>/remove 相机</code>、<code>/list</code>、<code>/clear confirm</code>、<code>/help</code>。屏蔽词仅作用于该私聊或群聊。</p>
+    <div className="qq-actions"><button className="secondary-button" type="button" disabled={busy} onClick={() => void save()}>{busy ? '保存中…' : '保存 QQ 配置'}</button><button className="secondary-button" type="button" disabled={busy} onClick={() => void onSyncPanels()}>同步 QQ 指令面板</button><button className="secondary-button" type="button" disabled={busy} onClick={() => void onTest()}>发送 QQ 测试消息</button></div>
   </section>
+}
+
+function QQBotSettings({ config, onChange, onNotice }: { config: QQBotConfig; onChange: (config: QQBotConfig) => void; onNotice: (message: string) => void }): JSX.Element {
+  const addBot = (): void => onChange({ ...config, bots: [...config.bots, { id: crypto.randomUUID(), enabled: false, appId: '', targets: [], commandPanelIds: {}, secretConfigured: false }] })
+  const saveBot = async (value: { bot: QQBotAccount; appSecret?: string }): Promise<void> => {
+    try { const next = await window.mercariPulse.saveQQBotConfig(value); onChange(next); onNotice('QQ 机器人配置已保存') } catch (error) { onNotice(error instanceof Error ? error.message : String(error)) }
+  }
+  return <>
+    <header><div><p className="eyebrow">QQ BOT</p><h1>QQ机器人设置</h1><p>每个机器人独立保存 AppSecret、推送目标、关键词订阅及指令面板。</p></div><button className="primary" type="button" onClick={addBot}>+ 添加 QQ 机器人</button></header>
+    {config.bots.map((bot) => <QQBotPanel key={bot.id} bot={bot} secretConfigured={bot.secretConfigured} onSave={saveBot} onTest={async () => {
+      try { const result = await window.mercariPulse.testQQBot(bot.id); onNotice(result.failed ? `QQ 测试完成：成功 ${result.delivered}，失败 ${result.failed}` : `QQ 测试消息已发送至 ${result.delivered} 个目标`) } catch (error) { onNotice(error instanceof Error ? error.message : String(error)) }
+    }} onSyncPanels={async () => {
+      try { const result = await window.mercariPulse.syncQQCommandPanels(bot.id); onNotice(`QQ 指令面板已同步：新建 ${result.created} 个，更新 ${result.updated} 个。`) } catch (error) { onNotice(error instanceof Error ? error.message : String(error)) }
+    }} />)}
+    {!config.bots.length && <div className="empty-state compact"><b>还没有 QQ 机器人</b><span>点击“添加 QQ 机器人”后填写 AppID 与 AppSecret。</span></div>}
+  </>
 }
 
 export function App(): JSX.Element {
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null)
   const [bootError, setBootError] = useState('')
-  const [page, setPage] = useState<'dashboard' | 'favorites' | 'logs' | 'settings'>('dashboard')
+  const [page, setPage] = useState<'dashboard' | 'favorites' | 'logs' | 'settings' | 'qqbots'>('dashboard')
   const [notice, setNotice] = useState('')
   const [qqConfig, setQQConfig] = useState<QQBotConfig | null>(null)
   const [itemFilter, setItemFilter] = useState<'all' | string>('all')
+  const [favoriteFilter, setFavoriteFilter] = useState<'all' | 'auction' | 'direct' | 'sold' | 'available'>('all')
   const [pendingRemoval, setPendingRemoval] = useState<Subscription | null>(null)
   const [, forceClock] = useState(0)
 
@@ -286,12 +296,7 @@ export function App(): JSX.Element {
     return window.mercariPulse.onMonitorEvent((event) => {
       if (event.snapshot) {
         setSnapshot(event.snapshot)
-        setQQConfig((current) => {
-          if (!current) return current
-          const settings = event.snapshot!.settings
-          if (current.enabled === settings.qqBotEnabled && current.appId === settings.qqBotAppId && sameQQTargets(current.targets, settings.qqBotTargets)) return current
-          return { ...current, enabled: settings.qqBotEnabled, appId: settings.qqBotAppId, targets: settings.qqBotTargets }
-        })
+        void window.mercariPulse.getQQBotConfig().then(setQQConfig).catch(() => undefined)
       }
       if (event.item) setNotice(`${event.item.discoveryType === 'updated' ? '旧商品更新' : '发现上新'}：${event.item.name}`)
     })
@@ -310,6 +315,12 @@ export function App(): JSX.Element {
 
   const activeCount = useMemo(() => snapshot?.subscriptions.filter((item) => item.enabled).length ?? 0, [snapshot])
   const filteredItems = useMemo(() => snapshot?.recentItems.filter((item) => itemFilter === 'all' || item.subscriptionId === itemFilter) ?? [], [snapshot, itemFilter])
+  const filteredFavorites = useMemo(() => (snapshot?.favorites ?? []).filter((favorite) => {
+    if (favoriteFilter === 'all') return true
+    if (favoriteFilter === 'auction') return favorite.isAuction === true
+    if (favoriteFilter === 'direct') return favorite.isAuction !== true
+    return favoriteFilter === 'sold' ? isSoldMercariStatus(favorite.status) : !isSoldMercariStatus(favorite.status)
+  }), [snapshot?.favorites, favoriteFilter])
 
   useEffect(() => {
     if (itemFilter !== 'all' && !snapshot?.subscriptions.some((item) => item.id === itemFilter)) setItemFilter('all')
@@ -333,6 +344,7 @@ export function App(): JSX.Element {
           <button className={page === 'dashboard' ? 'active' : ''} onClick={() => setPage('dashboard')}><span>◫</span>监控面板</button>
           <button className={page === 'favorites' ? 'active' : ''} onClick={() => setPage('favorites')}><span>♥</span>我的收藏</button>
           <button className={page === 'logs' ? 'active' : ''} onClick={() => setPage('logs')}><span>≡</span>运行日志</button>
+          <button className={page === 'qqbots' ? 'active' : ''} onClick={() => setPage('qqbots')}><span>♟</span>QQ机器人设置</button>
           <button className={page === 'settings' ? 'active' : ''} onClick={() => setPage('settings')}><span>⚙</span>偏好设置</button>
         </nav>
         <div className="engine-state"><i /><div><b>监控引擎在线</b><span>{activeCount} 个任务运行中</span></div></div>
@@ -346,7 +358,7 @@ export function App(): JSX.Element {
           <section className="section-block">
             <div className="section-heading"><div><h2>监控任务</h2><span>{snapshot.subscriptions.length} 个关键词</span></div></div>
             <div className="subscription-grid">
-              {snapshot.subscriptions.map((item) => <SubscriptionCard key={item.id} item={item} qqTargets={snapshot.settings.qqBotTargets}
+              {snapshot.subscriptions.map((item) => <SubscriptionCard key={item.id} item={item} qqTargets={snapshot.settings.qqBots.flatMap((bot) => bot.targets)}
                 fastTaken={snapshot.subscriptions.some((other) => other.id !== item.id && other.intervalMs <= 500)}
                 onChange={(id, patch) => void action(window.mercariPulse.updateSubscription(id, patch))}
                 onCheck={(id) => void action(window.mercariPulse.checkNow(id))}
@@ -372,9 +384,18 @@ export function App(): JSX.Element {
         </> : page === 'favorites' ? <>
           <header><div><p className="eyebrow">MY FAVORITES</p><h1>我的收藏</h1><p>每 30 秒检查一次商品价格与在售状态</p></div><div className="live-chip"><i /> {snapshot.favorites.length} 件收藏</div></header>
           <section className="section-block favorites-page">
-            <div className="favorite-grid">{snapshot.favorites.map((favorite) => <FavoriteCard key={favorite.id} item={favorite} onRemove={(id) => void action(window.mercariPulse.removeFavorite(id))} />)}{!snapshot.favorites.length && <div className="empty-state compact"><b>还没有收藏商品</b><span>在“监控面板 → 商品动态”中点击 ♥ 即可收藏并监控。</span></div>}</div>
+            <div className="item-filters" role="tablist" aria-label="收藏商品分类">
+              <button className={favoriteFilter === 'all' ? 'active' : ''} onClick={() => setFavoriteFilter('all')}>全部 <span>{snapshot.favorites.length}</span></button>
+              <button className={favoriteFilter === 'auction' ? 'active' : ''} onClick={() => setFavoriteFilter('auction')}>拍卖 <span>{snapshot.favorites.filter((item) => item.isAuction === true).length}</span></button>
+              <button className={favoriteFilter === 'direct' ? 'active' : ''} onClick={() => setFavoriteFilter('direct')}>直售 <span>{snapshot.favorites.filter((item) => item.isAuction !== true).length}</span></button>
+              <button className={favoriteFilter === 'available' ? 'active' : ''} onClick={() => setFavoriteFilter('available')}>未售出 <span>{snapshot.favorites.filter((item) => !isSoldMercariStatus(item.status)).length}</span></button>
+              <button className={favoriteFilter === 'sold' ? 'active' : ''} onClick={() => setFavoriteFilter('sold')}>已售出 <span>{snapshot.favorites.filter((item) => isSoldMercariStatus(item.status)).length}</span></button>
+            </div>
+            <div className="favorite-grid">{filteredFavorites.map((favorite) => <FavoriteCard key={favorite.id} item={favorite} onRemove={(id) => void action(window.mercariPulse.removeFavorite(id))} />)}{!filteredFavorites.length && <div className="empty-state compact"><b>{snapshot.favorites.length ? '该分类暂无收藏商品' : '还没有收藏商品'}</b><span>{snapshot.favorites.length ? '切换其他分类查看。' : '在“监控面板 → 商品动态”中点击 ♥ 即可收藏并监控。'}</span></div>}</div>
           </section>
-        </> : page === 'logs' ? <LogPanel logs={snapshot.logs} /> : <>
+        </> : page === 'logs' ? <LogPanel logs={snapshot.logs} /> : page === 'qqbots' ? <>
+          {qqConfig && <QQBotSettings config={qqConfig} onChange={setQQConfig} onNotice={setNotice} />}
+        </> : <>
           <header><div><p className="eyebrow">PREFERENCES</p><h1>偏好设置</h1><p>调整通知与默认轮询节奏</p></div></header>
           <section className="settings-panel">
             <Setting label="系统通知" detail="检测到上新时发送桌面通知"><label className="switch"><input type="checkbox" checked={snapshot.settings.notificationsEnabled} onChange={(e) => void action(window.mercariPulse.updateSettings({ notificationsEnabled: e.target.checked }))} /><span /></label></Setting>
@@ -386,19 +407,6 @@ export function App(): JSX.Element {
             <Setting label="启动时最小化" detail="应用启动后直接驻留系统托盘"><label className="switch"><input type="checkbox" checked={snapshot.settings.launchMinimized} onChange={(e) => void action(window.mercariPulse.updateSettings({ launchMinimized: e.target.checked }))} /><span /></label></Setting>
             <Setting label="默认检查间隔" detail="极速模式请求更频繁，可能更易触发限流"><select value={snapshot.settings.defaultIntervalMs} onChange={(e) => void action(window.mercariPulse.updateSettings({ defaultIntervalMs: Number(e.target.value) }))}><option value="500">0.5 秒（极速）</option><option value="1000">1 秒</option><option value="2000">2 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option></select></Setting>
           </section>
-          {qqConfig && <QQBotPanel config={qqConfig} onSave={async (value) => {
-            try { setQQConfig(await window.mercariPulse.saveQQBotConfig(value)); setNotice('QQ 机器人配置已保存') } catch (error) { setNotice(error instanceof Error ? error.message : String(error)) }
-          }} onTest={async () => {
-            try {
-              const result = await window.mercariPulse.testQQBot()
-              setNotice(result.failed ? `QQ 测试完成：成功 ${result.delivered}，失败 ${result.failed}` : `QQ 测试消息已发送至 ${result.delivered} 个目标`)
-            } catch (error) { setNotice(error instanceof Error ? error.message : String(error)) }
-          }} onSyncPanels={async () => {
-            try {
-              const result = await window.mercariPulse.syncQQCommandPanels()
-              setNotice(`QQ 菜单已更新；指令面板新建 ${result.created} 个，更新 ${result.updated} 个。面板仅对已发现并启用的私聊或群聊生效。`)
-            } catch (error) { setNotice(error instanceof Error ? error.message : String(error)) }
-          }} />}
           <div className="notice-box"><b>关于 1 秒延迟</b><p>应用每约 1 秒发起一次检查，但最终发现延迟还取决于 Mercari 搜索索引更新时间、网络 RTT 和接口限流。失败时会自动退避，恢复后回到设定间隔。</p></div>
         </>}
       </main>
