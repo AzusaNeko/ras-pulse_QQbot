@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, Notification, screen, shell, Tray } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, Notification, screen, shell, Tray } from 'electron'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { AppSettings, FavoriteUpdate, MercariItem, NewSubscription, QQBotConfig, SaveQQBotConfigInput, Subscription } from '../shared/types'
@@ -294,7 +294,8 @@ function registerIpc(): void {
 app.whenReady().then(async () => {
   const userData = app.getPath('userData')
   secretStore = new SecretStore(join(userData, 'qqbot-secret.dat'))
-  engine = new MonitorEngine(new MercariClient(), new JsonStore(join(userData, 'state.json')))
+  const mercariClient = new MercariClient((input, init) => net.fetch(input, init))
+  engine = new MonitorEngine(mercariClient, new JsonStore(join(userData, 'state.json')))
   await engine.start()
   qqNotifier = new QQBotNotifier(secretStore, async (target) => {
     const settings = engine.snapshot().settings

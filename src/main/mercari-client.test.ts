@@ -18,6 +18,7 @@ const shopsItem: MercariItem = {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.useRealTimers()
 })
 
 describe('Mercari client', () => {
@@ -82,6 +83,37 @@ describe('Mercari client', () => {
 
     const statuses = fetchMock.mock.calls.map(([, request]) => JSON.parse(String(request?.body)).searchCondition.status)
     expect(statuses).toEqual([['STATUS_ON_SALE'], ['STATUS_SOLD_OUT']])
+  })
+
+  it('uses an injected fetch implementation for Mercari requests', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('global fetch must not be used') }))
+    const injectedFetch = vi.fn(async () => new Response(JSON.stringify({
+      items: [{ id: 'm-proxy', name: '代理商品', price: 2_400, thumbnails: [] }]
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+    const subscription = { id: 'watch-1', keyword: '相机' } as Subscription
+
+    const result = await new MercariClient(injectedFetch).search(subscription)
+
+    expect(injectedFetch).toHaveBeenCalledOnce()
+    expect(injectedFetch).toHaveBeenCalledWith('https://api.mercari.jp/v2/entities:search', expect.objectContaining({
+      method: 'POST',
+      signal: expect.any(AbortSignal)
+    }))
+    expect(result).toMatchObject([{ id: 'm-proxy', name: '代理商品', subscriptionId: 'watch-1' }])
+  })
+
+  it('reports an actionable error when the search request times out', async () => {
+    vi.useFakeTimers()
+    const abortingFetch = vi.fn((_input: string | URL | Request, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('This operation was aborted', 'AbortError')))
+    }))
+    const subscription = { id: 'watch-1', keyword: '相机' } as Subscription
+
+    const request = new MercariClient(abortingFetch, 5).search(subscription)
+    const result = request.catch((error: unknown) => error)
+    await vi.advanceTimersByTimeAsync(5)
+
+    expect(await result).toMatchObject({ message: 'Mercari 请求超时，请检查网络或系统代理' })
   })
 
   it('maps Mercari Shops results to the Shops product route', () => {
