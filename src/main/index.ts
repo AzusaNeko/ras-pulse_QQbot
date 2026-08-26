@@ -324,6 +324,12 @@ app.whenReady().then(async () => {
     const settings = engine.snapshot().settings
     const currentTarget = settings.qqBotTargets.find((item) => item.id === target.id)
     if (!currentTarget) return '目标初始化中，请稍后再试。'
+    if (command.type === 'bind') {
+      await engine.updateSettings({
+        qqBotTargets: settings.qqBotTargets.map((item) => item.id === target.id ? { ...item, label: command.name } : item)
+      })
+      return `已绑定当前${target.type === 'group' ? '群聊' : '私聊'}为“${command.name}”。`
+    }
     if (command.type === 'list') {
       return currentTarget.keywords.length
         ? `你的监控关键词：\n${currentTarget.keywords.map((entry, index) => `${index + 1}. ${entry.keyword}${entry.excludeKeywords.length ? `（屏蔽：${entry.excludeKeywords.join('、')}）` : ''}`).join('\n')}`

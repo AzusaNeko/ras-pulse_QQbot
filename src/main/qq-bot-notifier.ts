@@ -130,6 +130,7 @@ export class QQBotNotifier {
     const client = this.getClient(settings.qqBotAppId, secret)
     const panel = {
       items: [
+        { type: 'command', name: '/绑定 ', desc: '为当前会话填写名称' },
         { type: 'command', name: '/添加关键词 ', desc: '选中后填写关键词' },
         { type: 'command', name: '/关键词 添加屏蔽词 ', desc: '例：相机 添加屏蔽词 故障' },
         { type: 'command', name: '/移除关键词 ', desc: '选中后填写关键词' },
@@ -144,6 +145,7 @@ export class QQBotNotifier {
         items: [
           {
             type: 'menu', name: '监控管理', sub_menu_items: [
+              { type: 'send_message', name: '绑定名称', send_message: '/绑定 ' },
               { type: 'send_message', name: '移除关键词', send_message: '/移除关键词 ' },
               { type: 'send_message', name: '关键词列表', send_message: '/关键词列表' },
               { type: 'send_message', name: '清除所有关键词', send_message: '/清除所有关键词' },
