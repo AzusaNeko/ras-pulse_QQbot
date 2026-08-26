@@ -129,7 +129,7 @@ export class QQBotNotifier {
         { type: 'command', name: '/清除全部', desc: '清空前会要求确认' },
         { type: 'command', name: '/帮助', desc: '查看使用说明' }
       ],
-      remark: 'ras-pulse-command-panel-v3'
+      remark: 'ras-pulse-command-panel-v4'
     }
     await client.api.put('/v2/menu', {
       menu: {
@@ -150,6 +150,12 @@ export class QQBotNotifier {
     let created = 0
     let updated = 0
     for (const scope of ['c2c', 'group'] as const) {
+      const targetIds = [...new Set(settings.qqBotTargets
+        .filter((target) => target.enabled && target.type === scope && Boolean(target.targetId.trim()))
+        .map((target) => target.targetId.trim()))].slice(0, 20)
+      // Specific panels work for the actual QQ recipients and avoid the platform's
+      // separate quota for an all-user/all-group global panel.
+      if (!targetIds.length) continue
       const storedId = panelIds[scope]
       if (storedId) {
         try {
@@ -161,7 +167,12 @@ export class QQBotNotifier {
           delete panelIds[scope]
         }
       }
-      const createdPanel = await client.api.post<{ panel_id?: string }>('/v2/panels', { scope, target_type: 'all', panel })
+      const createdPanel = await client.api.post<{ panel_id?: string }>('/v2/panels', {
+        scope,
+        target_type: 'specific',
+        ...(scope === 'c2c' ? { user_openids: targetIds } : { group_openids: targetIds }),
+        panel
+      })
       if (!createdPanel.panel_id) throw new Error('QQ 未返回新建指令面板 ID')
       panelIds[scope] = createdPanel.panel_id
       created += 1
