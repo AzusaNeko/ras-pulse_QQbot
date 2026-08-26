@@ -130,6 +130,7 @@ export class QQBotNotifier {
     const client = this.getClient(settings.qqBotAppId, secret)
     const panel = {
       items: [
+        { type: 'command', name: '/绑定名称 ', desc: '先填写昵称或群名称' },
         { type: 'command', name: '/添加关键词 ', desc: '选中后填写关键词' },
         { type: 'command', name: '/关键词 添加屏蔽词 ', desc: '例：相机 添加屏蔽词 故障' },
         { type: 'command', name: '/移除关键词 ', desc: '选中后填写关键词' },
@@ -144,6 +145,7 @@ export class QQBotNotifier {
         items: [
           {
             type: 'menu', name: '监控管理', sub_menu_items: [
+              { type: 'send_message', name: '绑定名称', send_message: '/绑定名称 ' },
               { type: 'send_message', name: '移除关键词', send_message: '/移除关键词 ' },
               { type: 'send_message', name: '关键词列表', send_message: '/关键词列表' },
               { type: 'send_message', name: '清除所有关键词', send_message: '/清除所有关键词' },
@@ -194,11 +196,12 @@ export class QQBotNotifier {
 
   private enabledTargets(settings: AppSettings, item?: MercariItem): QQBotTarget[] {
     const targets = settings.qqBotTargets.filter((target) => {
-      if (!target.enabled || !target.targetId.trim() || !item) return target.enabled && Boolean(target.targetId.trim())
+      if (!target.enabled || !target.targetId.trim() || !target.bindingName?.trim()) return false
+      if (!item) return true
       const subscription = target.keywords.find((value) => value.keyword.toLocaleLowerCase() === item.keyword.toLocaleLowerCase())
       return Boolean(subscription && !subscription.excludeKeywords.some((term) => item.name.toLocaleLowerCase().includes(term.toLocaleLowerCase())))
     })
-    if (!targets.length && !item) throw new Error('请至少添加一个启用的 QQ 推送目标')
+    if (!targets.length && !item) throw new Error('请至少绑定一个启用的 QQ 推送目标')
     return targets
   }
 
@@ -229,7 +232,7 @@ export class QQBotNotifier {
   }
 
   private targetName(target: QQBotTarget): string {
-    return target.label || `${target.type === 'group' ? '群聊' : '私聊'} ${target.targetId}`
+    return target.bindingName || target.label || `${target.type === 'group' ? '群聊' : '私聊'} ${target.targetId}`
   }
 
   private detectNickname(message: { senderName?: string; raw?: unknown }): string | undefined {

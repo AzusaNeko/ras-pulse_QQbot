@@ -102,6 +102,8 @@ export interface QQBotTarget {
   label: string
   /** Nickname reported by QQ for the user who most recently used this target. */
   detectedNickname?: string
+  /** User-confirmed private-chat nickname or group name required for delivery. */
+  bindingName?: string
   enabled: boolean
   /** Keyword subscriptions belonging to this QQ private chat or group. */
   keywords: QQBotKeyword[]

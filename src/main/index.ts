@@ -269,6 +269,7 @@ function registerIpc(): void {
       ...target,
       targetId: target.targetId.trim(),
       label: target.label.trim(),
+      bindingName: target.bindingName?.trim() || undefined,
       enabled: Boolean(target.enabled)
     })).filter((target) => target.targetId)
     const secret = input.appSecret?.trim()
@@ -324,6 +325,12 @@ app.whenReady().then(async () => {
     const settings = engine.snapshot().settings
     const currentTarget = settings.qqBotTargets.find((item) => item.id === target.id)
     if (!currentTarget) return '目标初始化中，请稍后再试。'
+    if (command.type === 'bind') {
+      await engine.updateSettings({
+        qqBotTargets: settings.qqBotTargets.map((item) => item.id === target.id ? { ...item, bindingName: command.name } : item)
+      })
+      return `已绑定${target.type === 'group' ? '群名称' : '昵称'}“${command.name}”。现在可以添加关键词并接收推送。`
+    }
     if (command.type === 'list') {
       return currentTarget.keywords.length
         ? `你的监控关键词：\n${currentTarget.keywords.map((entry, index) => `${index + 1}. ${entry.keyword}${entry.excludeKeywords.length ? `（屏蔽：${entry.excludeKeywords.join('、')}）` : ''}`).join('\n')}`
@@ -339,6 +346,9 @@ app.whenReady().then(async () => {
     }
     const normalized = command.keyword.toLocaleLowerCase()
     if (command.type === 'add') {
+      if (!currentTarget.bindingName?.trim()) {
+        return `请先完成绑定：${target.type === 'group' ? '绑定群名 你的群名称' : '绑定昵称 你的昵称'}。绑定前不会接收商品推送。`
+      }
       if (currentTarget.keywords.some((entry) => entry.keyword.toLocaleLowerCase() === normalized)) return `你已经订阅了“${command.keyword}”。如需调整屏蔽词，请先移除后重新添加。`
       const subscription = { keyword: command.keyword, excludeKeywords: command.excludeKeywords }
       const nextTargets = settings.qqBotTargets.map((item) => item.id === target.id ? { ...item, keywords: [...item.keywords, subscription] } : item)
