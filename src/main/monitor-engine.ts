@@ -441,6 +441,12 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     return createdAt >= subscription.createdAt - NEW_LISTING_CLOCK_SKEW_MS
   }
 
+  /** Records a service diagnostic outside the polling loop and publishes it immediately. */
+  async recordDiagnostic(level: LogLevel, message: string): Promise<void> {
+    this.recordLog(level, message)
+    await this.persistAndEmit()
+  }
+
   private wasUpdatedAfterMonitoringStarted(item: MercariItem, subscription: Subscription): boolean {
     if (!item.updatedAt) return false
     const updatedAt = item.updatedAt > 10_000_000_000 ? item.updatedAt : item.updatedAt * 1_000

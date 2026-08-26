@@ -1,6 +1,6 @@
 export type MonitorStatus = 'watching' | 'paused' | 'checking' | 'backoff' | 'error'
 
-export type LogLevel = 'info' | 'warn' | 'error'
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
 export interface LogEntry {
   id: string

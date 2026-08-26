@@ -187,8 +187,8 @@ function LogPanel({ logs }: { logs: LogEntry[] }): JSX.Element {
   return <>
     <header><div><p className="eyebrow">RUNTIME LOGS</p><h1>运行日志</h1><p>保留最近 500 条关键运行事件，重启后仍可查看。</p></div><div className="live-chip"><i /> {logs.length} 条</div></header>
     <section className="log-panel">
-      <div className="log-toolbar"><div className="item-filters"><button className={level === 'all' ? 'active' : ''} onClick={() => setLevel('all')}>全部</button><button className={level === 'info' ? 'active' : ''} onClick={() => setLevel('info')}>信息</button><button className={level === 'warn' ? 'active' : ''} onClick={() => setLevel('warn')}>警告</button><button className={level === 'error' ? 'active' : ''} onClick={() => setLevel('error')}>错误</button></div><span>最新记录在前</span></div>
-      <div className="log-list">{visible.map((entry) => <div className={`log-entry ${entry.level}`} key={entry.id}><time>{logTime(entry.timestamp)}</time><b>{entry.level === 'info' ? '信息' : entry.level === 'warn' ? '警告' : '错误'}</b><span>{entry.message}</span></div>)}{!visible.length && <div className="empty-state compact"><b>暂无日志</b><span>监控运行后，关键事件会显示在这里。</span></div>}</div>
+      <div className="log-toolbar"><div className="item-filters"><button className={level === 'all' ? 'active' : ''} onClick={() => setLevel('all')}>全部</button><button className={level === 'debug' ? 'active' : ''} onClick={() => setLevel('debug')}>调试</button><button className={level === 'info' ? 'active' : ''} onClick={() => setLevel('info')}>信息</button><button className={level === 'warn' ? 'active' : ''} onClick={() => setLevel('warn')}>警告</button><button className={level === 'error' ? 'active' : ''} onClick={() => setLevel('error')}>错误</button></div><span>最新记录在前</span></div>
+      <div className="log-list">{visible.map((entry) => <div className={`log-entry ${entry.level}`} key={entry.id}><time>{logTime(entry.timestamp)}</time><b>{entry.level === 'debug' ? '调试' : entry.level === 'info' ? '信息' : entry.level === 'warn' ? '警告' : '错误'}</b><span>{entry.message}</span></div>)}{!visible.length && <div className="empty-state compact"><b>暂无日志</b><span>监控运行后，关键事件会显示在这里。</span></div>}</div>
     </section>
   </>
 }

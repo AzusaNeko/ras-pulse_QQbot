@@ -109,7 +109,7 @@ function normalizeLogs(value: unknown): LogEntry[] {
     if (!entry || typeof entry !== 'object') return []
     const candidate = entry as Partial<LogEntry>
     if (typeof candidate.id !== 'string' || typeof candidate.timestamp !== 'number' || !Number.isFinite(candidate.timestamp)
-      || typeof candidate.message !== 'string' || !['info', 'warn', 'error'].includes(candidate.level ?? '')) return []
+      || typeof candidate.message !== 'string' || !['debug', 'info', 'warn', 'error'].includes(candidate.level ?? '')) return []
     return [{ id: candidate.id, timestamp: candidate.timestamp, message: candidate.message, level: candidate.level as LogEntry['level'] }]
   }).slice(0, 500)
 }

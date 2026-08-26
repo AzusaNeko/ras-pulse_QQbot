@@ -1,5 +1,5 @@
 import { QQBot } from '@tencent-connect/qqbot-nodejs'
-import type { AppSettings, MercariItem, QQBotTarget, QQBotTargetType } from '../shared/types'
+import type { AppSettings, LogLevel, MercariItem, QQBotTarget, QQBotTargetType } from '../shared/types'
 import { isSupportedMercariImageUrl } from './mercari-item-url'
 import { SecretStore } from './secret-store'
 
@@ -16,7 +16,8 @@ export class QQBotNotifier {
   constructor(
     private readonly secrets: SecretStore,
     private readonly onTargetDiscovered: (target: QQBotTarget) => Promise<void>,
-    private readonly onMessageReceived: (target: QQBotTarget, content: string) => Promise<string | undefined>
+    private readonly onMessageReceived: (target: QQBotTarget, content: string) => Promise<string | undefined>,
+    private readonly onDiagnostic?: (level: LogLevel, message: string) => void
   ) {}
 
   /** Starts the WebSocket gateway so QQ reports the bot as connected and targets can be discovered. */
@@ -218,9 +219,9 @@ export class QQBotNotifier {
         appId,
         appSecret: secret,
         logger: {
-          debug: (message) => console.info(message),
-          info: (message) => console.info(message),
-          error: (message) => console.error(message)
+          debug: (message) => this.logDiagnostic('debug', message),
+          info: (message) => this.logDiagnostic('info', message),
+          error: (message) => this.logDiagnostic('error', message)
         }
       })
       this.clientKey = key
@@ -233,6 +234,11 @@ export class QQBotNotifier {
     const secret = await this.secrets.get()
     if (!secret) throw new Error('请填写并保存 QQ AppSecret')
     return secret
+  }
+
+  private logDiagnostic(level: LogLevel, message: string): void {
+    console[level === 'debug' ? 'info' : level](message)
+    this.onDiagnostic?.(level, message)
   }
 
   private targetName(target: QQBotTarget): string {

@@ -380,8 +380,10 @@ app.whenReady().then(async () => {
     await engine.updateSettings({
       qqBotTargets: settings.qqBotTargets.map((item) => item.id === target.id ? { ...item, keywords: item.keywords.filter((entry) => entry.keyword.toLocaleLowerCase() !== normalized) } : item)
     })
-    return `已移除关键词“${matchingKeyword.keyword}”，后续不会再向当前${target.type === 'group' ? '群聊' : '私聊'}推送相关商品。`
-  })
+      return `已移除关键词“${matchingKeyword.keyword}”，后续不会再向当前${target.type === 'group' ? '群聊' : '私聊'}推送相关商品。`
+    }, (level, message) => {
+      void engine.recordDiagnostic(level, message).catch((error) => console.error(`QQ 诊断日志写入失败：${error}`))
+    })
   engine.on('snapshot', (snapshot) => broadcast({ type: 'snapshot', snapshot }))
   engine.on('newItem', (item) => {
     broadcast({ type: 'new-item', item })
