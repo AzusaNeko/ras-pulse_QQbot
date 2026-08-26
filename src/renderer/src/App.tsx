@@ -67,7 +67,7 @@ function SubscriptionCard({ item, qqTargets, fastTaken, onChange, onDelete, onCh
 }): JSX.Element {
   const [addingExclusions, setAddingExclusions] = useState(false)
   const [excludeInput, setExcludeInput] = useState('')
-  const [detailsExpanded, setDetailsExpanded] = useState(false)
+  const [detailsExpanded, setDetailsExpanded] = useState(true)
   const addExclude = (): void => {
     const existing = item.excludeKeyword.split(/[，,、\n]/).map((term) => term.trim()).filter(Boolean)
     const known = new Set(existing.map((term) => term.toLocaleLowerCase()))
@@ -102,7 +102,7 @@ function SubscriptionCard({ item, qqTargets, fastTaken, onChange, onDelete, onCh
         </div>
       </div>
       <div className="card-actions">
-        <button className="icon-button" title={detailsExpanded ? '收起详细信息' : '展开详细信息'} onClick={() => setDetailsExpanded((value) => !value)}>{detailsExpanded ? '⌃' : '⌄'}</button>
+        <button className={`details-toggle ${detailsExpanded ? 'expanded' : ''}`} title={detailsExpanded ? '收起详细信息' : '展开详细信息'} aria-expanded={detailsExpanded} onClick={() => setDetailsExpanded((value) => !value)}><span>{detailsExpanded ? '收起' : '详情'}</span><i>{detailsExpanded ? '⌃' : '⌄'}</i></button>
         <button className="icon-button" title="添加屏蔽词" onClick={() => { setDetailsExpanded(true); setAddingExclusions(true) }}>⊘</button>
         <button className="icon-button" title="立即检查" onClick={() => onCheck(item.id)}>↻</button>
         <label className="switch" title={item.enabled ? '暂停' : '启用'}>
@@ -253,7 +253,7 @@ function QQBotPanel({ bot, secretConfigured, onSave, onTest, onSyncPanels }: {
       </div>)}
       {!targets.length && <div className="qq-empty">保存开启后，私聊机器人或在群内 @ 机器人一次，软件会自动发现并添加对应目标。</div>}
     </div>
-    <p className="qq-command-hint">机器人指令：<code>/bind 名称</code>、<code>/add 相机</code>、<code>/add バンドリ exclude バンドリング</code>、<code>/remove 相机</code>、<code>/list</code>、<code>/clear confirm</code>、<code>/help</code>。屏蔽词仅作用于该私聊或群聊。</p>
+    <p className="qq-command-hint">机器人指令：<code>/bind</code> 绑定会话、<code>/add</code> 添加监控、<code>/remove</code> 移除监控、<code>/list</code> 查看订阅、<code>/clear</code> 清空订阅、<code>/help</code> 查看完整说明。屏蔽词使用 <code>/add 关键词 exclude 屏蔽词</code>。</p>
     <div className="qq-actions"><button className="secondary-button" type="button" disabled={busy} onClick={() => void save()}>{busy ? '保存中…' : '保存 QQ 配置'}</button><button className="secondary-button" type="button" disabled={busy} onClick={() => void onSyncPanels()}>同步 QQ 指令面板</button><button className="secondary-button" type="button" disabled={busy} onClick={() => void onTest()}>发送 QQ 测试消息</button></div>
   </section>
 }
@@ -308,6 +308,10 @@ export function App(): JSX.Element {
   }, [])
 
   useEffect(() => {
+    document.body.dataset.theme = snapshot?.settings.theme ?? 'emerald'
+  }, [snapshot?.settings.theme])
+
+  useEffect(() => {
     if (!notice) return
     const timer = setTimeout(() => setNotice(''), 4_000)
     return () => clearTimeout(timer)
@@ -337,7 +341,7 @@ export function App(): JSX.Element {
   if (!snapshot) return <main className="loading"><div className="pulse-logo">M</div><p>正在启动监控引擎…</p></main>
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell theme-${snapshot.settings.theme}`}>
       <aside>
         <div className="brand"><div className="brand-mark">M</div><div><strong>Mercari</strong><span>Pulse</span></div></div>
         <nav>
@@ -356,8 +360,8 @@ export function App(): JSX.Element {
           <header><div><p className="eyebrow">LOW-LATENCY WATCHER</p><h1>不错过每一次上新</h1><p>以约 1 秒间隔追踪 Mercari JP 最新商品</p></div><div className="live-chip"><i /> LIVE</div></header>
           <AddMonitor defaultInterval={snapshot.settings.defaultIntervalMs} onAdd={async (input) => { await action(window.mercariPulse.addSubscription(input)) }} />
           <section className="section-block">
-            <div className="section-heading"><div><h2>监控任务</h2><span>{snapshot.subscriptions.length} 个关键词</span></div></div>
-            <div className="subscription-grid">
+            <div className="section-heading"><div><h2>监控任务</h2><span>{snapshot.subscriptions.length} 个关键词</span></div><label className="task-height-control">可见任务 <input type="range" min="1" max="10" value={snapshot.settings.subscriptionVisibleCount} onChange={(event) => void action(window.mercariPulse.updateSettings({ subscriptionVisibleCount: Number(event.target.value) }))} /><input type="number" min="1" max="10" value={snapshot.settings.subscriptionVisibleCount} onChange={(event) => void action(window.mercariPulse.updateSettings({ subscriptionVisibleCount: Math.max(1, Math.min(10, Number(event.target.value) || 1)) }))} /> 条</label></div>
+            <div className="subscription-grid" style={{ maxHeight: `${snapshot.settings.subscriptionVisibleCount * 122}px` }}>
               {snapshot.subscriptions.map((item) => <SubscriptionCard key={item.id} item={item} qqTargets={snapshot.settings.qqBots.flatMap((bot) => bot.targets)}
                 fastTaken={snapshot.subscriptions.some((other) => other.id !== item.id && other.intervalMs <= 500)}
                 onChange={(id, patch) => void action(window.mercariPulse.updateSubscription(id, patch))}
@@ -406,6 +410,10 @@ export function App(): JSX.Element {
             <Setting label="通知声音" detail="使用操作系统的默认提示音"><label className="switch"><input type="checkbox" checked={snapshot.settings.soundEnabled} onChange={(e) => void action(window.mercariPulse.updateSettings({ soundEnabled: e.target.checked }))} /><span /></label></Setting>
             <Setting label="启动时最小化" detail="应用启动后直接驻留系统托盘"><label className="switch"><input type="checkbox" checked={snapshot.settings.launchMinimized} onChange={(e) => void action(window.mercariPulse.updateSettings({ launchMinimized: e.target.checked }))} /><span /></label></Setting>
             <Setting label="默认检查间隔" detail="极速模式请求更频繁，可能更易触发限流"><select value={snapshot.settings.defaultIntervalMs} onChange={(e) => void action(window.mercariPulse.updateSettings({ defaultIntervalMs: Number(e.target.value) }))}><option value="500">0.5 秒（极速）</option><option value="1000">1 秒</option><option value="2000">2 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option></select></Setting>
+          </section>
+          <section className="settings-panel personalization-panel">
+            <div className="personalization-heading"><p className="eyebrow">PERSONALIZATION</p><h2>个性化设置</h2><span>选择偏好的界面主题颜色，设置会自动保存。</span></div>
+            <Setting label="主题颜色" detail="仅改变软件界面配色，不影响商品图片"><select value={snapshot.settings.theme} onChange={(e) => void action(window.mercariPulse.updateSettings({ theme: e.target.value as AppSnapshot['settings']['theme'] }))}><option value="emerald">翡翠绿（默认）</option><option value="sapphire">深海蓝</option><option value="violet">暮光紫</option><option value="rose">玫瑰粉</option><option value="amber">琥珀金</option></select></Setting>
           </section>
           <div className="notice-box"><b>关于 1 秒延迟</b><p>应用每约 1 秒发起一次检查，但最终发现延迟还取决于 Mercari 搜索索引更新时间、网络 RTT 和接口限流。失败时会自动退避，恢复后回到设定间隔。</p></div>
         </>}

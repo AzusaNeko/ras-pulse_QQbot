@@ -81,6 +81,9 @@ export interface AppSettings {
   notificationIncludePrice: boolean
   launchMinimized: boolean
   defaultIntervalMs: number
+  /** Number of expanded monitoring tasks visible before their list scrolls. */
+  subscriptionVisibleCount: number
+  theme: AppTheme
   qqBotEnabled: boolean
   qqBotAppId: string
   qqBotTargets: QQBotTarget[]
@@ -102,6 +105,8 @@ export interface QQBotAccount {
   /** QQ panel IDs created for this robot; updated instead of recreated. */
   commandPanelIds: Partial<Record<QQBotTargetType, string>>
 }
+
+export type AppTheme = 'emerald' | 'sapphire' | 'violet' | 'rose' | 'amber'
 
 export interface QQBotKeyword {
   /** The monitored search term. */

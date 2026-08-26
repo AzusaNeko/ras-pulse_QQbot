@@ -36,5 +36,34 @@ export function parseQQKeywordCommand(content: string): QQKeywordCommand | undef
 }
 
 export function qqKeywordHelp(): string {
-  return '关键词监控指令：\n/bind 名称\n/add 相机\n/add バンドリ exclude バンドリエール、バンドリング\n/remove 相机\n/list\n/clear confirm\n/help\n\n绑定会为当前私聊或群聊保存名称；添加后仅会收到自己订阅关键词的上新提醒，屏蔽词仅对当前私聊或群聊生效。'
+  return [
+    '【Ras Pulse 指令帮助】',
+    '',
+    '/bind 名称',
+    '功能：绑定当前私聊或群聊。完成绑定后才能订阅、管理关键词和接收推送。',
+    '示例：/bind 我的收藏群',
+    '',
+    '/add 关键词',
+    '功能：添加商品关键词监控，仅向当前会话推送匹配商品。',
+    '示例：/add 相机',
+    '',
+    '/add 关键词 exclude 屏蔽词1、屏蔽词2',
+    '功能：添加监控时同时排除标题含有这些屏蔽词的商品。',
+    '示例：/add バンドリ exclude バンドリエール、バンドリング',
+    '',
+    '/remove 关键词',
+    '功能：移除当前会话的指定关键词，不影响其他用户或群聊。',
+    '示例：/remove 相机',
+    '',
+    '/list',
+    '功能：查看当前会话已订阅的关键词和屏蔽词。',
+    '',
+    '/clear',
+    '功能：请求清除当前会话的全部关键词；按提示发送 /clear confirm 才会执行。',
+    '',
+    '/help',
+    '功能：显示本帮助。',
+    '',
+    '提示：未绑定时仅可使用 /bind 和 /help；屏蔽词仅作用于当前私聊或群聊。'
+  ].join('\n')
 }

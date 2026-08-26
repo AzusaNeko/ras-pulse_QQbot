@@ -42,6 +42,8 @@ export const defaultState: PersistedState = {
     notificationIncludePrice: true,
     launchMinimized: false,
     defaultIntervalMs: 1_000,
+    subscriptionVisibleCount: 5,
+    theme: 'emerald',
     qqBotEnabled: false,
     qqBotAppId: '',
     qqBotTargets: [],
@@ -169,7 +171,9 @@ export class JsonStore implements StateStore {
           qqBotTargets: (parsed.settings?.qqBotTargets ?? []).map((target) => ({ ...target, botId: target.botId ?? 'legacy-default', keywords: normalizeQQKeywords(target.keywords) })),
           qqCommandPanelIds: parsed.settings?.qqCommandPanelIds ?? {},
           qqCommandPanelAppId: parsed.settings?.qqCommandPanelAppId ?? '',
-          qqBots: normalizeQQBots(parsed.settings)
+          qqBots: normalizeQQBots(parsed.settings),
+          subscriptionVisibleCount: Math.max(1, Math.min(10, Number(parsed.settings?.subscriptionVisibleCount) || defaultState.settings.subscriptionVisibleCount)),
+          theme: ['emerald', 'sapphire', 'violet', 'rose', 'amber'].includes(parsed.settings?.theme ?? '') ? parsed.settings?.theme as AppSettings['theme'] : defaultState.settings.theme
         },
         subscriptions: (parsed.subscriptions ?? []).map((subscription) => ({ ...subscription, monitorUpdates: typeof subscription.monitorUpdates === 'boolean' ? subscription.monitorUpdates : true })),
         recentItems: (parsed.recentItems ?? []).map((item) => ({ ...normalizeStoredItem(item), isAuction: typeof item.isAuction === 'boolean' ? item.isAuction : undefined })),
