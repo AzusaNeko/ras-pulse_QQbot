@@ -214,7 +214,15 @@ export class QQBotNotifier {
   private getClient(appId: string, secret: string): QQBot {
     const key = `${appId}\u0000${secret}`
     if (!this.client || this.clientKey !== key) {
-      this.client = new QQBot({ appId, appSecret: secret })
+      this.client = new QQBot({
+        appId,
+        appSecret: secret,
+        logger: {
+          debug: (message) => console.debug(message),
+          info: (message) => console.info(message),
+          error: (message) => console.error(message)
+        }
+      })
       this.clientKey = key
     }
     return this.client
