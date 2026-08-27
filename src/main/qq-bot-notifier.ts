@@ -172,6 +172,7 @@ export class QQBotNotifier {
       `${item.discoveryType === 'updated' ? '【旧商品更新】' : '【发现上新】'}${item.keyword}`,
       `商品：${item.name}`,
       `价格：¥${item.price.toLocaleString('ja-JP')}`,
+      ...(item.isAuction === true ? ['商品类型：拍卖商品'] : []),
       ...(item.discoveryType === 'updated' ? [`更新内容：${item.updateSummary ?? '卖家编辑了商品信息'}`] : []),
       `链接：${item.url}`
     ].join('\n')
