@@ -94,7 +94,7 @@ function SubscriptionCard({ item, qqTargets, fastTaken, onChange, onDelete, onCh
             </p>
             {qqSubscribers.length > 0 && <div className="subscription-qq-targets"><b>QQ 推送：</b>{qqSubscribers.map((target) => <span key={target.id} title={target.targetId}>{target.type === 'group' ? '群聊' : '私聊'} · {target.label || target.detectedNickname || target.targetId}{target.detectedNickname && target.label ? `（${target.detectedNickname}）` : ''}{!target.enabled ? '（已停用）' : ''}</span>)}</div>}
             {addingExclusions && <form className="exclude-editor" onSubmit={(event) => { event.preventDefault(); addExclude() }}>
-              <div><input autoFocus value={excludeInput} onChange={(event) => setExcludeInput(event.target.value)} placeholder="输入屏蔽词，多个用逗号分隔" /><small>示例：バンドリーノ、バンドリエール（支持逗号、顿号或换行）</small></div>
+              <input autoFocus value={excludeInput} onChange={(event) => setExcludeInput(event.target.value)} placeholder="输入屏蔽词，多个用逗号分隔" />
               <button className="secondary-button" type="submit" disabled={!excludeInput.trim()}>添加</button>
               <button className="text-button" type="button" onClick={() => { setExcludeInput(''); setAddingExclusions(false) }}>取消</button>
             </form>}
@@ -135,6 +135,7 @@ function AddMonitor({ defaultInterval, onAdd }: { defaultInterval: number; onAdd
   const [initialDisplayCount, setInitialDisplayCount] = useState('2')
   const [monitorUpdates, setMonitorUpdates] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [showExcludeHelp, setShowExcludeHelp] = useState(false)
 
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault()
@@ -154,7 +155,7 @@ function AddMonitor({ defaultInterval, onAdd }: { defaultInterval: number; onAdd
     } finally { setBusy(false) }
   }
 
-  return (
+  return <>
     <form className={`add-monitor ${expanded ? 'expanded' : ''}`} onSubmit={(event) => void submit(event)}>
       <div className="search-row">
         <span className="search-icon">⌕</span>
@@ -162,7 +163,7 @@ function AddMonitor({ defaultInterval, onAdd }: { defaultInterval: number; onAdd
         <button className="primary" disabled={!keyword.trim() || busy}>{busy ? '添加中…' : '开始监控'}</button>
       </div>
       {expanded && <div className="advanced-row">
-        <label>排除词<input value={excludeKeyword} onChange={(event) => setExcludeKeyword(event.target.value)} placeholder="例：故障、仅盒" /><small>示例：バンドリーノ、バンドリエール</small></label>
+        <label className="exclude-field"><span className="exclude-field-title">排除词<button className="exclude-help-button" type="button" aria-label="查看屏蔽词使用方法" title="查看屏蔽词使用方法" onClick={() => setShowExcludeHelp(true)}>?</button></span><input value={excludeKeyword} onChange={(event) => setExcludeKeyword(event.target.value)} placeholder="例：故障、仅盒" /></label>
         <label>首次展示<select value={initialDisplayCount} onChange={(event) => setInitialDisplayCount(event.target.value)}>{[1, 2, 3, 4, 5].map((count) => <option key={count} value={count}>{count} 条</option>)}</select></label>
         <label>最低价<input type="number" min="0" value={minPrice} onChange={(event) => setMinPrice(event.target.value)} placeholder="不限" /></label>
         <label>最高价<input type="number" min="0" value={maxPrice} onChange={(event) => setMaxPrice(event.target.value)} placeholder="不限" /></label>
@@ -170,7 +171,20 @@ function AddMonitor({ defaultInterval, onAdd }: { defaultInterval: number; onAdd
         <button type="button" className="text-button" onClick={() => setExpanded(false)}>收起</button>
       </div>}
     </form>
-  )
+    {showExcludeHelp && <ExcludeKeywordHelpDialog onClose={() => setShowExcludeHelp(false)} />}
+  </>
+}
+
+function ExcludeKeywordHelpDialog({ onClose }: { onClose: () => void }): JSX.Element {
+  return <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
+    <section className="confirm-dialog exclusion-help-dialog" role="dialog" aria-modal="true" aria-labelledby="exclude-help-title" onMouseDown={(event) => event.stopPropagation()}>
+      <p className="eyebrow">EXCLUDE KEYWORDS</p>
+      <h2 id="exclude-help-title">屏蔽词使用方法</h2>
+      <p>支持英文逗号 <code>,</code>、中文逗号 <code>，</code>、顿号 <code>、</code> 或换行分隔多个词。商品标题命中任意一个屏蔽词，就不会显示或推送。</p>
+      <div className="exclude-help-examples"><b>使用案例</b><code>バンドリーノ、バンドリエール</code><code>故障, 仅盒</code><code>バンドリーノ{`\n`}バンドリエール</code></div>
+      <div className="confirm-dialog-actions"><button className="secondary-button" type="button" onClick={onClose}>知道了</button></div>
+    </section>
+  </div>
 }
 
 function LogPanel({ logs }: { logs: LogEntry[] }): JSX.Element {
