@@ -102,6 +102,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       maxPrice: input.maxPrice,
       initialDisplayCount: clampInitialDisplayCount(input.initialDisplayCount),
       monitorUpdates: input.monitorUpdates ?? true,
+      windowsNotificationsEnabled: true,
       enabled: true,
       intervalMs,
       createdAt: Date.now(),

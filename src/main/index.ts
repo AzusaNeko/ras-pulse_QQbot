@@ -493,7 +493,8 @@ app.whenReady().then(async () => {
   engine.on('newItem', (item) => {
     broadcast({ type: 'new-item', item })
     const settings = engine.snapshot().settings
-    if (settings.notificationsEnabled) {
+    const subscription = engine.snapshot().subscriptions.find((candidate) => candidate.id === item.subscriptionId)
+    if (settings.notificationsEnabled && subscription?.windowsNotificationsEnabled !== false) {
       void showProductNotification(item, settings)
     }
     void Promise.allSettled(settings.qqBots.filter((bot) => bot.enabled).map((bot) => getQQNotifier(bot.id).sendItem(item, bot))).then((results) => {

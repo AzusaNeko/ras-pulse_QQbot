@@ -175,7 +175,11 @@ export class JsonStore implements StateStore {
           subscriptionVisibleCount: Math.max(1, Math.min(10, Number(parsed.settings?.subscriptionVisibleCount) || defaultState.settings.subscriptionVisibleCount)),
           theme: ['emerald', 'sapphire', 'violet', 'rose', 'amber', 'obsidian', 'porcelain'].includes(parsed.settings?.theme ?? '') ? parsed.settings?.theme as AppSettings['theme'] : defaultState.settings.theme
         },
-        subscriptions: (parsed.subscriptions ?? []).map((subscription) => ({ ...subscription, monitorUpdates: typeof subscription.monitorUpdates === 'boolean' ? subscription.monitorUpdates : true })),
+        subscriptions: (parsed.subscriptions ?? []).map((subscription) => ({
+          ...subscription,
+          monitorUpdates: typeof subscription.monitorUpdates === 'boolean' ? subscription.monitorUpdates : true,
+          windowsNotificationsEnabled: typeof subscription.windowsNotificationsEnabled === 'boolean' ? subscription.windowsNotificationsEnabled : true
+        })),
         recentItems: (parsed.recentItems ?? []).map((item) => ({ ...normalizeStoredItem(item), isAuction: typeof item.isAuction === 'boolean' ? item.isAuction : undefined })),
         favorites: (parsed.favorites ?? []).map((item) => ({ ...normalizeStoredItem(item), isAuction: typeof item.isAuction === 'boolean' ? item.isAuction : undefined })),
         logs: normalizeLogs(parsed.logs),

@@ -18,6 +18,8 @@ export interface Subscription {
   initialDisplayCount: number
   /** Emit an activity record when an already-seen listing is edited. */
   monitorUpdates: boolean
+  /** Show a Windows product notification for this keyword when an item is detected. */
+  windowsNotificationsEnabled: boolean
   enabled: boolean
   intervalMs: number
   createdAt: number
