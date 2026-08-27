@@ -102,6 +102,24 @@ describe('Mercari client', () => {
     expect(result).toMatchObject([{ id: 'm-proxy', name: '代理商品', subscriptionId: 'watch-1' }])
   })
 
+  it('sends multiple exclusion terms using Mercari-compatible spaces', async () => {
+    const injectedFetch = vi.fn(async (_input: string, _init?: RequestInit) => new Response(JSON.stringify({ items: [] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' }
+    }))
+    const subscription = {
+      id: 'watch-1',
+      keyword: 'バンドリ',
+      excludeKeyword: 'バンドリーノ、スピーディバンドリエール30、バンドリエール'
+    } as Subscription
+
+    await new MercariClient(injectedFetch).search(subscription)
+
+    const request = injectedFetch.mock.calls[0][1]
+    expect(JSON.parse(String(request?.body)).searchCondition.excludeKeyword)
+      .toBe('バンドリーノ スピーディバンドリエール30 バンドリエール')
+  })
+
   it('reports an actionable error when the search request times out', async () => {
     vi.useFakeTimers()
     const abortingFetch = vi.fn((_input: string | URL | Request, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
