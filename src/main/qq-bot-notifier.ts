@@ -80,6 +80,21 @@ export class QQBotNotifier {
     return this.summarizeOutcomes(outcomes, targets)
   }
 
+  /** Warn affected QQ recipients after an administrator removes a local keyword task. */
+  async sendKeywordRemovedByAdmin(keyword: string, targets: QQBotTarget[], bot: QQBotAccount): Promise<QQDeliveryResult> {
+    if (!bot.enabled) throw new Error('QQ 机器人未开启，无法发送管理员移除通知')
+    const recipients = targets.filter((target) => Boolean(target.targetId.trim()) && Boolean(target.label.trim()))
+    if (!recipients.length) return { delivered: 0, failed: 0 }
+    const secret = await this.requireSecret(bot)
+    const client = this.getClient(bot.appId, secret)
+    const content = `关键词“${keyword}”已被管理员移除，如需继续监控请重新添加关键词。`
+    const outcomes = await Promise.allSettled(recipients.map((target) => client.sendText({
+      scope: target.type,
+      targetId: target.targetId.trim()
+    }, content)))
+    return this.summarizeOutcomes(outcomes, recipients)
+  }
+
   private async sendImageInBackground(client: QQBot, targets: QQBotTarget[], imageUrl: string): Promise<void> {
     try {
       const image = await this.fetchProductImage(imageUrl)

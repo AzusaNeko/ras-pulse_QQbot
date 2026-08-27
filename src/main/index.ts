@@ -235,7 +235,39 @@ function registerIpc(): void {
   ipcMain.handle('monitor:snapshot', () => engine.snapshot())
   ipcMain.handle('monitor:add', (_event, input: NewSubscription) => engine.add(input))
   ipcMain.handle('monitor:update', (_event, id: string, patch: Partial<Subscription>) => engine.update(id, patch))
-  ipcMain.handle('monitor:remove', (_event, id: string, removeRelatedItems: boolean) => engine.remove(id, removeRelatedItems))
+  ipcMain.handle('monitor:remove', async (_event, id: string, removeRelatedItems: boolean) => {
+    const snapshot = engine.snapshot()
+    const subscription = snapshot.subscriptions.find((entry) => entry.id === id)
+    if (!subscription) throw new Error('未找到该关键词监控')
+    const normalizedKeyword = subscription.keyword.toLocaleLowerCase()
+    const affectedBots = snapshot.settings.qqBots.map((bot) => ({
+      bot,
+      targets: bot.targets.filter((target) => target.keywords.some((entry) => entry.keyword.toLocaleLowerCase() === normalizedKeyword))
+    })).filter((entry) => entry.targets.length > 0)
+    const cleanedBots = snapshot.settings.qqBots.map((bot) => ({
+      ...bot,
+      targets: bot.targets.map((target) => ({
+        ...target,
+        keywords: target.keywords.filter((entry) => entry.keyword.toLocaleLowerCase() !== normalizedKeyword)
+      }))
+    }))
+    await engine.remove(id, removeRelatedItems)
+    if (affectedBots.length) {
+      await engine.updateSettings({ qqBots: cleanedBots })
+      const targetCount = affectedBots.reduce((count, entry) => count + entry.targets.length, 0)
+      void engine.recordDiagnostic('info', `管理员移除了关键词“${subscription.keyword}”，已从 ${targetCount} 个 QQ 目标的订阅列表中同步移除。`)
+      void Promise.allSettled(affectedBots.filter(({ bot }) => bot.enabled).map(({ bot, targets }) =>
+        getQQNotifier(bot.id).sendKeywordRemovedByAdmin(subscription.keyword, targets, bot)
+      )).then((outcomes) => {
+        for (const outcome of outcomes) {
+          if (outcome.status === 'rejected') {
+            void engine.recordDiagnostic('warn', `关键词“${subscription.keyword}”的 QQ 管理员移除通知发送失败：${outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason)}`)
+          }
+        }
+      })
+    }
+    return engine.snapshot()
+  })
   ipcMain.handle('monitor:dismiss-item', (_event, subscriptionId: string, itemId: string) => engine.dismissRecentItem(subscriptionId, itemId))
   ipcMain.handle('favorites:add', (_event, item: MercariItem) => engine.addFavorite(item))
   ipcMain.handle('favorites:remove', (_event, itemId: string) => engine.removeFavorite(itemId))
