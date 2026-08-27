@@ -426,7 +426,8 @@ function getQQNotifier(botId: string): QQBotNotifier {
     }
     await replaceBotTargets(bot.id, (targets) => targets.map((entry) => isSameQQTarget(entry, target) ? { ...entry, keywords: entry.keywords.filter((keyword) => keyword.keyword.toLocaleLowerCase() !== normalized) } : entry))
     return `已移除关键词“${matching.keyword}”。`
-  }, (level, message) => void engine.recordDiagnostic(level, message).catch((error) => console.error(`QQ 诊断日志写入失败：${error}`)))
+  }, (level, message) => void engine.recordDiagnostic(level, message).catch((error) => console.error(`QQ 诊断日志写入失败：${error}`)),
+  (url, init) => net.fetch(url, init))
   qqNotifiers.set(botId, notifier)
   return notifier
 }
@@ -520,7 +521,7 @@ app.whenReady().then(async () => {
       return `已移除关键词“${matchingKeyword.keyword}”，后续不会再向当前${target.type === 'group' ? '群聊' : '私聊'}推送相关商品。`
     }, (level, message) => {
       void engine.recordDiagnostic(level, message).catch((error) => console.error(`QQ 诊断日志写入失败：${error}`))
-    })
+    }, (url, init) => net.fetch(url, init))
   engine.on('snapshot', (snapshot) => broadcast({ type: 'snapshot', snapshot }))
   engine.on('newItem', (item) => {
     broadcast({ type: 'new-item', item })

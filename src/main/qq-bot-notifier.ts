@@ -8,6 +8,8 @@ export interface QQDeliveryResult {
   failed: number
 }
 
+type ImageFetch = (url: string, init?: RequestInit) => Promise<Response>
+
 export class QQBotNotifier {
   private client: QQBot | null = null
   private clientKey = ''
@@ -17,7 +19,8 @@ export class QQBotNotifier {
     private readonly secrets: SecretStore,
     private readonly onTargetDiscovered: (target: QQBotTarget) => Promise<void>,
     private readonly onMessageReceived: (target: QQBotTarget, content: string) => Promise<string | undefined>,
-    private readonly onDiagnostic?: (level: LogLevel, message: string) => void
+    private readonly onDiagnostic?: (level: LogLevel, message: string) => void,
+    private readonly imageFetch: ImageFetch = (url, init) => fetch(url, init)
   ) {}
 
   /** Starts the WebSocket gateway so QQ reports the bot as connected and targets can be discovered. */
@@ -113,7 +116,7 @@ export class QQBotNotifier {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 4_000)
     try {
-      const response = await fetch(url, { signal: controller.signal })
+      const response = await this.imageFetch(url, { signal: controller.signal })
       if (!response.ok) throw new Error(`图片服务器返回 HTTP ${response.status}`)
       const length = Number(response.headers.get('content-length') ?? '0')
       if (length > 4 * 1024 * 1024) throw new Error('商品图片超过 4 MB')
