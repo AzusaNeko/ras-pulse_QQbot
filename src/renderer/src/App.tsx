@@ -291,6 +291,7 @@ function QQBotSettings({ config, onChange, onNotice }: { config: QQBotConfig; on
 export function App(): JSX.Element {
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null)
   const [bootError, setBootError] = useState('')
+  const [appVersion, setAppVersion] = useState('')
   const [page, setPage] = useState<'dashboard' | 'favorites' | 'logs' | 'settings' | 'qqbots'>('dashboard')
   const [notice, setNotice] = useState('')
   const [qqConfig, setQQConfig] = useState<QQBotConfig | null>(null)
@@ -304,8 +305,8 @@ export function App(): JSX.Element {
       setBootError('桌面桥接组件未能加载。请安装最新版本后重新启动应用。')
       return
     }
-    void Promise.all([window.mercariPulse.getSnapshot(), window.mercariPulse.getQQBotConfig()])
-      .then(([nextSnapshot, nextQQConfig]) => { setSnapshot(nextSnapshot); setQQConfig(nextQQConfig) })
+    void Promise.all([window.mercariPulse.getSnapshot(), window.mercariPulse.getQQBotConfig(), window.mercariPulse.getAppVersion()])
+      .then(([nextSnapshot, nextQQConfig, nextVersion]) => { setSnapshot(nextSnapshot); setQQConfig(nextQQConfig); setAppVersion(nextVersion) })
       .catch((error) => setBootError(String(error)))
     return window.mercariPulse.onMonitorEvent((event) => {
       if (event.snapshot) {
@@ -366,7 +367,7 @@ export function App(): JSX.Element {
           <button className={page === 'settings' ? 'active' : ''} onClick={() => setPage('settings')}><span>⚙</span>偏好设置</button>
         </nav>
         <div className="engine-state"><i /><div><b>监控引擎在线</b><span>{activeCount} 个任务运行中</span></div></div>
-        <p className="version">MERCARI PULSE · V0.2.0</p>
+        <p className="version">MERCARI PULSE · {appVersion ? `V${appVersion}` : '正在读取版本…'}</p>
       </aside>
 
       <main className="content">
@@ -424,6 +425,7 @@ export function App(): JSX.Element {
             <Setting label="通知声音" detail="使用操作系统的默认提示音"><label className="switch"><input type="checkbox" checked={snapshot.settings.soundEnabled} onChange={(e) => void action(window.mercariPulse.updateSettings({ soundEnabled: e.target.checked }))} /><span /></label></Setting>
             <Setting label="启动时最小化" detail="应用启动后直接驻留系统托盘"><label className="switch"><input type="checkbox" checked={snapshot.settings.launchMinimized} onChange={(e) => void action(window.mercariPulse.updateSettings({ launchMinimized: e.target.checked }))} /><span /></label></Setting>
             <Setting label="默认检查间隔" detail="极速模式请求更频繁，可能更易触发限流"><select value={snapshot.settings.defaultIntervalMs} onChange={(e) => void action(window.mercariPulse.updateSettings({ defaultIntervalMs: Number(e.target.value) }))}><option value="500">0.5 秒（极速）</option><option value="1000">1 秒</option><option value="2000">2 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option></select></Setting>
+            <Setting label="当前版本" detail="版本号由当前运行的安装包自动读取"><span className="app-version-badge">V{appVersion || '读取中'}</span></Setting>
           </section>
           <section className="settings-panel personalization-panel">
             <div className="personalization-heading"><p className="eyebrow">PERSONALIZATION</p><h2>个性化设置</h2><span>选择偏好的界面主题颜色，设置会自动保存。</span></div>

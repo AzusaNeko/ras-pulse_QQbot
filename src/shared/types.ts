@@ -174,6 +174,7 @@ export interface MonitorEvent {
 }
 
 export interface MercariPulseApi {
+  getAppVersion(): Promise<string>
   getSnapshot(): Promise<AppSnapshot>
   addSubscription(input: NewSubscription): Promise<AppSnapshot>
   updateSubscription(id: string, patch: Partial<Subscription>): Promise<AppSnapshot>

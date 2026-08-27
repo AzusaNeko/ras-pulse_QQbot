@@ -232,6 +232,7 @@ function createTray(): void {
 }
 
 function registerIpc(): void {
+  ipcMain.handle('app:get-version', () => app.getVersion())
   ipcMain.handle('monitor:snapshot', () => engine.snapshot())
   ipcMain.handle('monitor:add', (_event, input: NewSubscription) => engine.add(input))
   ipcMain.handle('monitor:update', (_event, id: string, patch: Partial<Subscription>) => engine.update(id, patch))
