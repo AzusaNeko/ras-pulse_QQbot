@@ -93,6 +93,44 @@ describe('MonitorEngine baseline', () => {
     engine.stop()
   })
 
+  it('silently resyncs listings accumulated while the app was offline', async () => {
+    const source = new FakeSource()
+    const store = new MemoryStore()
+    const subscription: Subscription = {
+      id: 'persisted-task',
+      keyword: '相机',
+      excludeKeyword: '',
+      initialDisplayCount: 2,
+      monitorUpdates: true,
+      windowsNotificationsEnabled: true,
+      enabled: true,
+      intervalMs: 1_000,
+      createdAt: Date.now() - 60_000,
+      status: 'watching',
+      consecutiveErrors: 0
+    }
+    store.state.subscriptions = [subscription]
+    store.state.seenBySubscription[subscription.id] = ['before-shutdown']
+    store.state.baselineReadyBySubscription[subscription.id] = true
+    source.items = [item('while-offline'), item('before-shutdown')]
+    const engine = new MonitorEngine(source, store)
+    const notified: MercariItem[] = []
+
+    await engine.start()
+    engine.stop()
+    engine.on('newItem', (value) => notified.push(value))
+    await engine.checkNow(subscription.id)
+
+    expect(notified).toHaveLength(0)
+    expect(engine.snapshot().recentItems).toHaveLength(0)
+    expect(store.state.seenBySubscription[subscription.id]).toContain('while-offline')
+
+    source.items = [item('after-restart'), ...source.items]
+    await engine.checkNow(subscription.id)
+    expect(notified.map((value) => value.id)).toEqual(['after-restart'])
+    engine.stop()
+  })
+
   it('can remove a subscription together with its related activity', async () => {
     const source = new FakeSource()
     const engine = new MonitorEngine(source, new MemoryStore())

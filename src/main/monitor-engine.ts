@@ -37,6 +37,8 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
   private readonly timers = new Map<string, NodeJS.Timeout>()
   private readonly running = new Set<string>()
   private readonly baselineRetryAt = new Map<string, number>()
+  /** Existing tasks silently absorb search results from the time the app was offline. */
+  private readonly startupResyncPending = new Set<string>()
   private healthTimer: NodeJS.Timeout | undefined
   private favoriteTimer: NodeJS.Timeout | undefined
   private favoritesRunning = false
@@ -55,6 +57,8 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       await this.store.save(this.state)
     }
     this.startedAt = Date.now()
+    this.startupResyncPending.clear()
+    for (const subscription of this.state.subscriptions) this.startupResyncPending.add(subscription.id)
     this.recordLog('info', `监控引擎已启动，已加载 ${this.state.subscriptions.length} 个关键词任务。`)
     await this.store.save(this.state)
     for (const subscription of this.state.subscriptions) this.schedule(subscription.id, 120)
@@ -145,6 +149,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     delete this.state.baselineReadyBySubscription[id]
     delete this.state.observedUpdatesBySubscription[id]
     this.baselineRetryAt.delete(id)
+    this.startupResyncPending.delete(id)
     const timer = this.timers.get(id)
     if (timer) clearTimeout(timer)
     this.timers.delete(id)
@@ -230,6 +235,16 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       subscription.cooldownUntil = undefined
 
       if (prior) {
+        if (this.startupResyncPending.delete(id)) {
+          // Anything returned by the first successful check existed before
+          // this running session could observe it. Remember it without
+          // producing desktop/QQ alerts, then resume normal polling.
+          const nextSeen = [...new Set([...items.map((item) => item.id), ...seen])].slice(0, MAX_SEEN_IDS)
+          this.state.seenBySubscription[id] = nextSeen
+          this.recordObservedUpdates(id, items, nextSeen)
+          this.recordLog('info', `启动基线同步完成：${subscription.keyword}，已静默同步 ${items.length} 条结果。`)
+          return
+        }
         await this.retryMissingBaseline(id, subscription, items, manual)
         const unseenItems = items.filter((candidate) => !seen.has(candidate.id))
         const previousUpdates = this.state.observedUpdatesBySubscription[id] ?? {}
@@ -297,6 +312,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
         }
         this.recordObservedUpdates(id, [...items, ...newItems, ...visibleEdits], nextSeen)
       } else {
+        this.startupResyncPending.delete(id)
         // Baseline entries intentionally count as seen even if a thumbnail is
         // unavailable, so pre-existing listings never become false "new" alerts.
         const nextSeen = [...new Set([...items.map((item) => item.id), ...seen])].slice(0, MAX_SEEN_IDS)
