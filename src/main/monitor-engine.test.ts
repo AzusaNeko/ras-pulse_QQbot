@@ -107,6 +107,40 @@ describe('MonitorEngine baseline', () => {
     engine.stop()
   })
 
+  it('filters excluded titles locally before recording baseline activity', async () => {
+    const source = new FakeSource()
+    const engine = new MonitorEngine(source, new MemoryStore())
+    source.items = [
+      { ...item('bag'), name: 'ルイヴィトン キーポル バンドリエール 50' },
+      { ...item('goods'), name: 'BanG Dream! 公式グッズ' }
+    ]
+    await engine.start()
+
+    const snapshot = await engine.add({ keyword: 'バンドリ', excludeKeyword: 'バンドリーノ、バンドリエール', initialDisplayCount: 2 })
+    await engine.checkNow(snapshot.subscriptions[0].id)
+
+    expect(engine.snapshot().recentItems.map((value) => value.id)).toEqual(['goods'])
+    engine.stop()
+  })
+
+  it('removes matching existing activity when exclusions are updated', async () => {
+    const source = new FakeSource()
+    const engine = new MonitorEngine(source, new MemoryStore())
+    source.items = [
+      { ...item('shoes'), name: 'バンドリーノ レディースシューズ' },
+      { ...item('goods'), name: 'BanG Dream! 公式グッズ' }
+    ]
+    await engine.start()
+    const snapshot = await engine.add({ keyword: 'バンドリ', initialDisplayCount: 2 })
+    const subscriptionId = snapshot.subscriptions[0].id
+    await engine.checkNow(subscriptionId)
+
+    await engine.update(subscriptionId, { excludeKeyword: 'バンドリーノ' })
+
+    expect(engine.snapshot().recentItems.map((value) => value.id)).toEqual(['goods'])
+    engine.stop()
+  })
+
   it('ignores new items whose product image cannot be accessed', async () => {
     const source = new FakeSource()
     source.items = [item('m1')]

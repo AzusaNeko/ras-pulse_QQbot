@@ -1,5 +1,6 @@
 import { generateKeyPairSync, randomUUID, sign } from 'node:crypto'
 import type { MercariItem, Subscription } from '../shared/types'
+import { toMercariExcludeKeyword } from './exclude-keywords'
 import { buildMercariItemUrl, isMercariShopsItem, isSupportedMercariImageUrl } from './mercari-item-url'
 
 const SEARCH_URL = 'https://api.mercari.jp/v2/entities:search'
@@ -139,7 +140,7 @@ export class MercariClient implements ItemSource {
       attributes: [],
       itemTypes: [],
       skuIds: [],
-      excludeKeyword: subscription.excludeKeyword
+      excludeKeyword: toMercariExcludeKeyword(subscription.excludeKeyword)
     }
 
     const body = {

@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import type { AppSnapshot, AppSettings, FavoriteUpdate, LogLevel, MercariItem, NewSubscription, Subscription } from '../shared/types'
+import { matchesExcludeKeyword } from './exclude-keywords'
 import type { ItemDetailSource, ItemImageValidator, ItemSource } from './mercari-client'
 import { isMercariShopsItem } from './mercari-item-url'
 import { isSoldMercariStatus } from '../shared/mercari-status'
@@ -122,6 +123,11 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       id,
       intervalMs
     })
+    if (patch.excludeKeyword !== undefined) {
+      this.state.recentItems = this.state.recentItems.filter(
+        (item) => item.subscriptionId !== id || !matchesExcludeKeyword(item.name, subscription.excludeKeyword)
+      )
+    }
     this.recordLog('info', `已更新关键词监控：${subscription.keyword}。`)
     await this.persistAndEmit()
     this.schedule(id, 20)
@@ -213,7 +219,8 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       const prior = this.state.seenBySubscription[id]
       // Preserve Mercari's returned “newest” ranking. Its `created` field can
       // reflect the original listing time rather than the web-search position.
-      const items = await this.source.search(subscription, { includeSold: !prior })
+      const items = (await this.source.search(subscription, { includeSold: !prior }))
+        .filter((item) => !matchesExcludeKeyword(item.name, subscription.excludeKeyword))
       const seen = new Set(prior ?? [])
       subscription.status = subscription.enabled ? 'watching' : 'paused'
       subscription.lastSuccessAt = Date.now()
