@@ -94,7 +94,7 @@ function SubscriptionCard({ item, qqTargets, fastTaken, onChange, onDelete, onCh
             </p>
             {qqSubscribers.length > 0 && <div className="subscription-qq-targets"><b>QQ 推送：</b>{qqSubscribers.map((target) => <span key={target.id} title={target.targetId}>{target.type === 'group' ? '群聊' : '私聊'} · {target.label || target.detectedNickname || target.targetId}{target.detectedNickname && target.label ? `（${target.detectedNickname}）` : ''}{!target.enabled ? '（已停用）' : ''}</span>)}</div>}
             {addingExclusions && <form className="exclude-editor" onSubmit={(event) => { event.preventDefault(); addExclude() }}>
-              <input autoFocus value={excludeInput} onChange={(event) => setExcludeInput(event.target.value)} placeholder="输入屏蔽词，多个用逗号分隔" />
+              <div><input autoFocus value={excludeInput} onChange={(event) => setExcludeInput(event.target.value)} placeholder="输入屏蔽词，多个用逗号分隔" /><small>示例：バンドリーノ、バンドリエール（支持逗号、顿号或换行）</small></div>
               <button className="secondary-button" type="submit" disabled={!excludeInput.trim()}>添加</button>
               <button className="text-button" type="button" onClick={() => { setExcludeInput(''); setAddingExclusions(false) }}>取消</button>
             </form>}
@@ -162,7 +162,7 @@ function AddMonitor({ defaultInterval, onAdd }: { defaultInterval: number; onAdd
         <button className="primary" disabled={!keyword.trim() || busy}>{busy ? '添加中…' : '开始监控'}</button>
       </div>
       {expanded && <div className="advanced-row">
-        <label>排除词<input value={excludeKeyword} onChange={(event) => setExcludeKeyword(event.target.value)} placeholder="例：故障、仅盒" /></label>
+        <label>排除词<input value={excludeKeyword} onChange={(event) => setExcludeKeyword(event.target.value)} placeholder="例：故障、仅盒" /><small>示例：バンドリーノ、バンドリエール</small></label>
         <label>首次展示<select value={initialDisplayCount} onChange={(event) => setInitialDisplayCount(event.target.value)}>{[1, 2, 3, 4, 5].map((count) => <option key={count} value={count}>{count} 条</option>)}</select></label>
         <label>最低价<input type="number" min="0" value={minPrice} onChange={(event) => setMinPrice(event.target.value)} placeholder="不限" /></label>
         <label>最高价<input type="number" min="0" value={maxPrice} onChange={(event) => setMaxPrice(event.target.value)} placeholder="不限" /></label>
