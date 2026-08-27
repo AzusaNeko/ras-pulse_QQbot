@@ -173,7 +173,7 @@ export class JsonStore implements StateStore {
           qqCommandPanelAppId: parsed.settings?.qqCommandPanelAppId ?? '',
           qqBots: normalizeQQBots(parsed.settings),
           subscriptionVisibleCount: Math.max(1, Math.min(10, Number(parsed.settings?.subscriptionVisibleCount) || defaultState.settings.subscriptionVisibleCount)),
-          theme: ['emerald', 'sapphire', 'violet', 'rose', 'amber'].includes(parsed.settings?.theme ?? '') ? parsed.settings?.theme as AppSettings['theme'] : defaultState.settings.theme
+          theme: ['emerald', 'sapphire', 'violet', 'rose', 'amber', 'obsidian', 'porcelain'].includes(parsed.settings?.theme ?? '') ? parsed.settings?.theme as AppSettings['theme'] : defaultState.settings.theme
         },
         subscriptions: (parsed.subscriptions ?? []).map((subscription) => ({ ...subscription, monitorUpdates: typeof subscription.monitorUpdates === 'boolean' ? subscription.monitorUpdates : true })),
         recentItems: (parsed.recentItems ?? []).map((item) => ({ ...normalizeStoredItem(item), isAuction: typeof item.isAuction === 'boolean' ? item.isAuction : undefined })),

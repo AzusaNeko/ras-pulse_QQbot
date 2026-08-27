@@ -327,6 +327,20 @@ function deduplicateQQTargets(targets: QQBotTarget[]): QQBotTarget[] {
   return [...result.values()]
 }
 
+/**
+ * QQ 会在收到消息时再次构造 replyTarget；它的临时 id 不一定等于本地
+ * 配置中手工创建目标的 id。对同一机器人而言，真正稳定的身份是会话类型
+ * 与 openid（targetId），而不是本地记录 id。
+ */
+function isSameQQTarget(left: QQBotTarget, right: QQBotTarget): boolean {
+  return left.id === right.id || (
+    left.botId === right.botId &&
+    left.type === right.type &&
+    Boolean(left.targetId.trim()) &&
+    left.targetId.trim() === right.targetId.trim()
+  )
+}
+
 function replaceBotTargets(botId: string, transform: (targets: QQBotTarget[]) => QQBotTarget[]): Promise<unknown> {
   const settings = engine.snapshot().settings
   return engine.updateSettings({ qqBots: settings.qqBots.map((bot) => bot.id === botId ? { ...bot, targets: deduplicateQQTargets(transform(bot.targets)) } : bot) })
@@ -338,35 +352,35 @@ function getQQNotifier(botId: string): QQBotNotifier {
   const notifier = new QQBotNotifier(secretStore, async (target) => {
     const bot = engine.snapshot().settings.qqBots.find((entry) => entry.id === target.botId)
     if (!bot) return
-    const current = bot.targets.find((entry) => entry.id === target.id)
+    const current = bot.targets.find((entry) => isSameQQTarget(entry, target))
     if (!current) {
       await replaceBotTargets(target.botId, (targets) => [...targets, target])
       console.info(`已自动发现 QQ 推送目标：${target.type}:${target.targetId}`)
     } else if (target.detectedNickname && target.detectedNickname !== current.detectedNickname) {
-      await replaceBotTargets(target.botId, (targets) => targets.map((entry) => entry.id === target.id ? { ...entry, detectedNickname: target.detectedNickname } : entry))
+      await replaceBotTargets(target.botId, (targets) => targets.map((entry) => isSameQQTarget(entry, target) ? { ...entry, detectedNickname: target.detectedNickname } : entry))
     }
   }, async (target, content) => {
     const command = parseQQKeywordCommand(content)
     if (!command) return '指令错误 可以先在帮助中查看指令'
     if (command.type === 'help') return qqKeywordHelp()
     const bot = engine.snapshot().settings.qqBots.find((entry) => entry.id === target.botId)
-    const currentTarget = bot?.targets.find((entry) => entry.id === target.id)
+    const currentTarget = bot?.targets.find((entry) => isSameQQTarget(entry, target))
     if (!bot || !currentTarget) return '目标初始化中，请稍后再试。'
     if (command.type === 'bind') {
-      await replaceBotTargets(bot.id, (targets) => targets.map((entry) => entry.id === target.id ? { ...entry, label: command.name } : entry))
+      await replaceBotTargets(bot.id, (targets) => targets.map((entry) => isSameQQTarget(entry, target) ? { ...entry, label: command.name } : entry))
       return `已绑定当前${target.type === 'group' ? '群聊' : '私聊'}为“${command.name}”。`
     }
     if (!currentTarget.label.trim()) return '请先完成绑定后再使用其他指令。请发送：/bind 名称'
     if (command.type === 'list') return currentTarget.keywords.length ? `你的监控关键词：\n${currentTarget.keywords.map((entry, index) => `${index + 1}. ${entry.keyword}${entry.excludeKeywords.length ? `（屏蔽：${entry.excludeKeywords.join('、')}）` : ''}`).join('\n')}` : `你还没有订阅关键词。\n\n${qqKeywordHelp()}`
     if (command.type === 'clear') {
       if (!command.confirmed) return `将清除当前${target.type === 'group' ? '群聊' : '私聊'}的全部 ${currentTarget.keywords.length} 个关键词订阅。\n如确认，请发送：/clear confirm`
-      await replaceBotTargets(bot.id, (targets) => targets.map((entry) => entry.id === target.id ? { ...entry, keywords: [] } : entry))
+      await replaceBotTargets(bot.id, (targets) => targets.map((entry) => isSameQQTarget(entry, target) ? { ...entry, keywords: [] } : entry))
       return '已清除当前会话的全部关键词订阅。不会影响其他用户、群聊或机器人。'
     }
     const normalized = command.keyword.toLocaleLowerCase()
     if (command.type === 'add') {
       if (currentTarget.keywords.some((entry) => entry.keyword.toLocaleLowerCase() === normalized)) return `你已经订阅了“${command.keyword}”。`
-      await replaceBotTargets(bot.id, (targets) => targets.map((entry) => entry.id === target.id ? { ...entry, keywords: [...entry.keywords, { keyword: command.keyword, excludeKeywords: command.excludeKeywords }] } : entry))
+      await replaceBotTargets(bot.id, (targets) => targets.map((entry) => isSameQQTarget(entry, target) ? { ...entry, keywords: [...entry.keywords, { keyword: command.keyword, excludeKeywords: command.excludeKeywords }] } : entry))
       if (!engine.snapshot().subscriptions.some((entry) => entry.keyword.toLocaleLowerCase() === normalized)) await engine.add({ keyword: command.keyword, initialDisplayCount: 2 })
       return `已添加关键词“${command.keyword}”。`
     }
@@ -375,10 +389,10 @@ function getQQNotifier(botId: string): QQBotNotifier {
     if (command.type === 'add-exclude') {
       const additions = command.excludeKeywords.filter((term) => !matching.excludeKeywords.some((known) => known.toLocaleLowerCase() === term.toLocaleLowerCase()))
       if (!additions.length) return `“${matching.keyword}”中的这些屏蔽词已存在。`
-      await replaceBotTargets(bot.id, (targets) => targets.map((entry) => entry.id === target.id ? { ...entry, keywords: entry.keywords.map((keyword) => keyword.keyword.toLocaleLowerCase() === normalized ? { ...keyword, excludeKeywords: [...keyword.excludeKeywords, ...additions] } : keyword) } : entry))
+      await replaceBotTargets(bot.id, (targets) => targets.map((entry) => isSameQQTarget(entry, target) ? { ...entry, keywords: entry.keywords.map((keyword) => keyword.keyword.toLocaleLowerCase() === normalized ? { ...keyword, excludeKeywords: [...keyword.excludeKeywords, ...additions] } : keyword) } : entry))
       return `已为“${matching.keyword}”添加屏蔽词：${additions.join('、')}。`
     }
-    await replaceBotTargets(bot.id, (targets) => targets.map((entry) => entry.id === target.id ? { ...entry, keywords: entry.keywords.filter((keyword) => keyword.keyword.toLocaleLowerCase() !== normalized) } : entry))
+    await replaceBotTargets(bot.id, (targets) => targets.map((entry) => isSameQQTarget(entry, target) ? { ...entry, keywords: entry.keywords.filter((keyword) => keyword.keyword.toLocaleLowerCase() !== normalized) } : entry))
     return `已移除关键词“${matching.keyword}”。`
   }, (level, message) => void engine.recordDiagnostic(level, message).catch((error) => console.error(`QQ 诊断日志写入失败：${error}`)))
   qqNotifiers.set(botId, notifier)
@@ -405,14 +419,14 @@ app.whenReady().then(async () => {
   }
   qqNotifier = new QQBotNotifier(secretStore, async (target) => {
     const settings = engine.snapshot().settings
-    const existing = settings.qqBotTargets.find((item) => item.id === target.id)
+    const existing = settings.qqBotTargets.find((item) => isSameQQTarget(item, target))
     if (!existing) {
       await engine.updateSettings({ qqBotTargets: [...settings.qqBotTargets, target] })
       console.info(`已自动发现 QQ 推送目标：${target.type}:${target.targetId}`)
       return
     }
     if (target.detectedNickname && target.detectedNickname !== existing.detectedNickname) {
-      await engine.updateSettings({ qqBotTargets: settings.qqBotTargets.map((item) => item.id === target.id
+      await engine.updateSettings({ qqBotTargets: settings.qqBotTargets.map((item) => isSameQQTarget(item, target)
         ? { ...item, detectedNickname: target.detectedNickname }
         : item) })
     }
@@ -421,11 +435,11 @@ app.whenReady().then(async () => {
     if (!command) return '指令错误 可以先在帮助中查看指令'
     if (command.type === 'help') return qqKeywordHelp()
     const settings = engine.snapshot().settings
-    const currentTarget = settings.qqBotTargets.find((item) => item.id === target.id)
+    const currentTarget = settings.qqBotTargets.find((item) => isSameQQTarget(item, target))
     if (!currentTarget) return '目标初始化中，请稍后再试。'
     if (command.type === 'bind') {
       await engine.updateSettings({
-        qqBotTargets: settings.qqBotTargets.map((item) => item.id === target.id ? { ...item, label: command.name } : item)
+        qqBotTargets: settings.qqBotTargets.map((item) => isSameQQTarget(item, target) ? { ...item, label: command.name } : item)
       })
       return `已绑定当前${target.type === 'group' ? '群聊' : '私聊'}为“${command.name}”。`
     }
@@ -438,7 +452,7 @@ app.whenReady().then(async () => {
       if (!command.confirmed) return `将清除当前${target.type === 'group' ? '群聊' : '私聊'}的全部 ${currentTarget.keywords.length} 个关键词订阅。\n如确认，请发送：/clear confirm`
       if (!currentTarget.keywords.length) return '你还没有订阅关键词。'
       await engine.updateSettings({
-        qqBotTargets: settings.qqBotTargets.map((item) => item.id === target.id ? { ...item, keywords: [] } : item)
+        qqBotTargets: settings.qqBotTargets.map((item) => isSameQQTarget(item, target) ? { ...item, keywords: [] } : item)
       })
       return `已清除当前${target.type === 'group' ? '群聊' : '私聊'}的全部关键词订阅。不会影响其他用户或群聊的订阅。`
     }
@@ -446,7 +460,7 @@ app.whenReady().then(async () => {
     if (command.type === 'add') {
       if (currentTarget.keywords.some((entry) => entry.keyword.toLocaleLowerCase() === normalized)) return `你已经订阅了“${command.keyword}”。如需调整屏蔽词，请先移除后重新添加。`
       const subscription = { keyword: command.keyword, excludeKeywords: command.excludeKeywords }
-      const nextTargets = settings.qqBotTargets.map((item) => item.id === target.id ? { ...item, keywords: [...item.keywords, subscription] } : item)
+      const nextTargets = settings.qqBotTargets.map((item) => isSameQQTarget(item, target) ? { ...item, keywords: [...item.keywords, subscription] } : item)
       await engine.updateSettings({ qqBotTargets: nextTargets })
       if (!engine.snapshot().subscriptions.some((subscription) => subscription.keyword.toLocaleLowerCase() === normalized)) {
         await engine.add({ keyword: command.keyword, initialDisplayCount: 2 })
@@ -460,7 +474,7 @@ app.whenReady().then(async () => {
       const additions = command.excludeKeywords.filter((term) => !existing.has(term.toLocaleLowerCase()))
       if (!additions.length) return `“${matchingKeyword.keyword}”中的这些屏蔽词已存在。`
       await engine.updateSettings({
-        qqBotTargets: settings.qqBotTargets.map((item) => item.id === target.id
+        qqBotTargets: settings.qqBotTargets.map((item) => isSameQQTarget(item, target)
           ? { ...item, keywords: item.keywords.map((entry) => entry.keyword.toLocaleLowerCase() === normalized
             ? { ...entry, excludeKeywords: [...entry.excludeKeywords, ...additions] }
             : entry) }
@@ -469,7 +483,7 @@ app.whenReady().then(async () => {
       return `已为“${matchingKeyword.keyword}”添加屏蔽词：${additions.join('、')}。`
     }
     await engine.updateSettings({
-      qqBotTargets: settings.qqBotTargets.map((item) => item.id === target.id ? { ...item, keywords: item.keywords.filter((entry) => entry.keyword.toLocaleLowerCase() !== normalized) } : item)
+      qqBotTargets: settings.qqBotTargets.map((item) => isSameQQTarget(item, target) ? { ...item, keywords: item.keywords.filter((entry) => entry.keyword.toLocaleLowerCase() !== normalized) } : item)
     })
       return `已移除关键词“${matchingKeyword.keyword}”，后续不会再向当前${target.type === 'group' ? '群聊' : '私聊'}推送相关商品。`
     }, (level, message) => {

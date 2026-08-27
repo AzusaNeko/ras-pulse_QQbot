@@ -413,7 +413,7 @@ export function App(): JSX.Element {
           </section>
           <section className="settings-panel personalization-panel">
             <div className="personalization-heading"><p className="eyebrow">PERSONALIZATION</p><h2>个性化设置</h2><span>选择偏好的界面主题颜色，设置会自动保存。</span></div>
-            <Setting label="主题颜色" detail="仅改变软件界面配色，不影响商品图片"><select value={snapshot.settings.theme} onChange={(e) => void action(window.mercariPulse.updateSettings({ theme: e.target.value as AppSnapshot['settings']['theme'] }))}><option value="emerald">翡翠绿（默认）</option><option value="sapphire">深海蓝</option><option value="violet">暮光紫</option><option value="rose">玫瑰粉</option><option value="amber">琥珀金</option></select></Setting>
+            <Setting label="主题颜色" detail="改变软件界面配色，不影响商品图片"><select value={snapshot.settings.theme} onChange={(e) => void action(window.mercariPulse.updateSettings({ theme: e.target.value as AppSnapshot['settings']['theme'] }))}><option value="emerald">翡翠绿（默认）</option><option value="sapphire">深海蓝</option><option value="violet">暮光紫</option><option value="rose">玫瑰粉</option><option value="amber">琥珀金</option><option value="obsidian">曜石黑</option><option value="porcelain">极简白</option></select></Setting>
           </section>
           <div className="notice-box"><b>关于 1 秒延迟</b><p>应用每约 1 秒发起一次检查，但最终发现延迟还取决于 Mercari 搜索索引更新时间、网络 RTT 和接口限流。失败时会自动退避，恢复后回到设定间隔。</p></div>
         </>}

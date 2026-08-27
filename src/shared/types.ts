@@ -106,7 +106,7 @@ export interface QQBotAccount {
   commandPanelIds: Partial<Record<QQBotTargetType, string>>
 }
 
-export type AppTheme = 'emerald' | 'sapphire' | 'violet' | 'rose' | 'amber'
+export type AppTheme = 'emerald' | 'sapphire' | 'violet' | 'rose' | 'amber' | 'obsidian' | 'porcelain'
 
 export interface QQBotKeyword {
   /** The monitored search term. */
