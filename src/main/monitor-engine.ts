@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
-import type { AppSnapshot, AppSettings, FavoriteUpdate, LogLevel, MercariItem, NewSubscription, Subscription } from '../shared/types'
+import type { AppSnapshot, AppSettings, BulkSubscriptionPatch, FavoriteUpdate, LogLevel, MercariItem, NewSubscription, Subscription } from '../shared/types'
 import { matchesExcludeKeyword } from './exclude-keywords'
 import type { ItemDetailSource, ItemImageValidator, ItemSource } from './mercari-client'
 import { isMercariShopsItem } from './mercari-item-url'
@@ -141,6 +141,28 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     this.recordLog('info', `已更新关键词监控：${subscription.keyword}。`)
     await this.persistAndEmit()
     this.schedule(id, 20)
+    return this.snapshot()
+  }
+
+  async updateAll(patch: BulkSubscriptionPatch): Promise<AppSnapshot> {
+    if (!this.state.subscriptions.length) return this.snapshot()
+    const intervalMs = patch.intervalMs === undefined ? undefined : Math.max(MIN_INTERVAL_MS, patch.intervalMs)
+    if (intervalMs !== undefined && intervalMs < 1_000) {
+      throw new Error('统一查询时间只支持 1 秒或更慢；0.1/0.5 秒模式请在对应关键词中单独设置。')
+    }
+    for (const subscription of this.state.subscriptions) {
+      if (intervalMs !== undefined) subscription.intervalMs = intervalMs
+      if (patch.monitorUpdates !== undefined) subscription.monitorUpdates = patch.monitorUpdates
+      if (patch.windowsNotificationsEnabled !== undefined) subscription.windowsNotificationsEnabled = patch.windowsNotificationsEnabled
+    }
+    const changes = [
+      intervalMs === undefined ? '' : `查询间隔 ${intervalMs} ms`,
+      patch.monitorUpdates === undefined ? '' : `旧商品更新${patch.monitorUpdates ? '开启' : '关闭'}`,
+      patch.windowsNotificationsEnabled === undefined ? '' : `Windows 弹窗${patch.windowsNotificationsEnabled ? '开启' : '关闭'}`
+    ].filter(Boolean).join('；')
+    this.recordLog('info', `已批量更新 ${this.state.subscriptions.length} 个监控任务：${changes}。`)
+    await this.persistAndEmit()
+    if (intervalMs !== undefined) this.state.subscriptions.forEach((subscription, index) => this.schedule(subscription.id, 20 + index * 20))
     return this.snapshot()
   }
 

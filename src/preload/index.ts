@@ -1,11 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AppSettings, MercariItem, MonitorEvent, NewSubscription, QQCommandPanelSyncResult, SaveQQBotConfigInput, Subscription } from '../shared/types'
+import type { AppSettings, BulkSubscriptionPatch, MercariItem, MonitorEvent, NewSubscription, QQCommandPanelSyncResult, SaveQQBotConfigInput, Subscription } from '../shared/types'
 
 contextBridge.exposeInMainWorld('mercariPulse', {
   getAppVersion: () => ipcRenderer.invoke('app:get-version'),
   getSnapshot: () => ipcRenderer.invoke('monitor:snapshot'),
   addSubscription: (input: NewSubscription) => ipcRenderer.invoke('monitor:add', input),
   updateSubscription: (id: string, patch: Partial<Subscription>) => ipcRenderer.invoke('monitor:update', id, patch),
+  updateAllSubscriptions: (patch: BulkSubscriptionPatch) => ipcRenderer.invoke('monitor:update-all', patch),
   removeSubscription: (id: string, removeRelatedItems: boolean) => ipcRenderer.invoke('monitor:remove', id, removeRelatedItems),
   dismissRecentItem: (subscriptionId: string, itemId: string) => ipcRenderer.invoke('monitor:dismiss-item', subscriptionId, itemId),
   addFavorite: (item: MercariItem) => ipcRenderer.invoke('favorites:add', item),

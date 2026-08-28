@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, Notification, screen, shell, Tray } from 'electron'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { AppSettings, FavoriteUpdate, MercariItem, NewSubscription, QQBotAccount, QQBotConfig, QQBotTarget, SaveQQBotConfigInput, Subscription } from '../shared/types'
+import type { AppSettings, BulkSubscriptionPatch, FavoriteUpdate, MercariItem, NewSubscription, QQBotAccount, QQBotConfig, QQBotTarget, SaveQQBotConfigInput, Subscription } from '../shared/types'
 import { MercariClient } from './mercari-client'
 import { isSupportedMercariImageUrl } from './mercari-item-url'
 import { MonitorEngine } from './monitor-engine'
@@ -236,6 +236,7 @@ function registerIpc(): void {
   ipcMain.handle('monitor:snapshot', () => engine.snapshot())
   ipcMain.handle('monitor:add', (_event, input: NewSubscription) => engine.add(input))
   ipcMain.handle('monitor:update', (_event, id: string, patch: Partial<Subscription>) => engine.update(id, patch))
+  ipcMain.handle('monitor:update-all', (_event, patch: BulkSubscriptionPatch) => engine.updateAll(patch))
   ipcMain.handle('monitor:remove', async (_event, id: string, removeRelatedItems: boolean) => {
     const snapshot = engine.snapshot()
     const subscription = snapshot.subscriptions.find((entry) => entry.id === id)

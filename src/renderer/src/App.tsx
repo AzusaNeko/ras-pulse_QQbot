@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type JSX, type ReactNode } from 'react'
-import type { AppSnapshot, FavoriteItem, LogEntry, MercariItem, MonitorStatus, NewSubscription, QQBotAccount, QQBotConfig, QQBotTarget, Subscription } from '../../shared/types'
+import type { AppSnapshot, BulkSubscriptionPatch, FavoriteItem, LogEntry, MercariItem, MonitorStatus, NewSubscription, QQBotAccount, QQBotConfig, QQBotTarget, Subscription } from '../../shared/types'
 import { isSoldMercariStatus } from '../../shared/mercari-status'
 
 const statusLabels: Record<MonitorStatus, string> = {
@@ -55,6 +55,36 @@ function ItemCard({ item, favorite, onFavorite, onDelete }: { item: MercariItem;
       </div>
     </article>
   )
+}
+
+function BulkSubscriptionManager({ count, onApply }: { count: number; onApply: (patch: BulkSubscriptionPatch) => Promise<boolean> }): JSX.Element {
+  const [interval, setIntervalValue] = useState('')
+  const [updates, setUpdates] = useState('')
+  const [notifications, setNotifications] = useState('')
+  const [busy, setBusy] = useState(false)
+  const hasChanges = Boolean(interval || updates || notifications)
+  const apply = async (): Promise<void> => {
+    const patch: BulkSubscriptionPatch = {}
+    if (interval) patch.intervalMs = Number(interval)
+    if (updates) patch.monitorUpdates = updates === 'on'
+    if (notifications) patch.windowsNotificationsEnabled = notifications === 'on'
+    setBusy(true)
+    try {
+      if (await onApply(patch)) {
+        setIntervalValue('')
+        setUpdates('')
+        setNotifications('')
+      }
+    } finally { setBusy(false) }
+  }
+  return <div className="bulk-task-manager">
+    <b>统一管理</b>
+    <label>查询时间<select value={interval} onChange={(event) => setIntervalValue(event.target.value)}><option value="">保持不变</option><option value="1000">1 秒</option><option value="2000">2 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option></select></label>
+    <label>旧商品更新<select value={updates} onChange={(event) => setUpdates(event.target.value)}><option value="">保持不变</option><option value="on">全部开启</option><option value="off">全部关闭</option></select></label>
+    <label>Windows 弹窗<select value={notifications} onChange={(event) => setNotifications(event.target.value)}><option value="">保持不变</option><option value="on">全部开启</option><option value="off">全部关闭</option></select></label>
+    <button className="secondary-button" disabled={!count || !hasChanges || busy} onClick={() => void apply()}>{busy ? '应用中…' : `应用到 ${count} 个任务`}</button>
+    <small>0.1/0.5 秒模式需在单个关键词中设置</small>
+  </div>
 }
 
 function SubscriptionCard({ item, qqTargets, ultraFastAtCapacity, fastAtCapacity, onChange, onDelete, onCheck }: {
@@ -346,11 +376,12 @@ export function App(): JSX.Element {
     if (itemFilter !== 'all' && !snapshot?.subscriptions.some((item) => item.id === itemFilter)) setItemFilter('all')
   }, [snapshot?.subscriptions, itemFilter])
 
-  async function action(work: Promise<AppSnapshot | void>): Promise<void> {
+  async function action(work: Promise<AppSnapshot | void>): Promise<boolean> {
     try {
       const result = await work
       if (result) setSnapshot(result)
-    } catch (error) { setNotice(error instanceof Error ? error.message : String(error)) }
+      return true
+    } catch (error) { setNotice(error instanceof Error ? error.message : String(error)); return false }
   }
 
   if (bootError) return <main className="loading"><div className="pulse-logo">!</div><p>{bootError}</p></main>
@@ -377,6 +408,11 @@ export function App(): JSX.Element {
           <AddMonitor defaultInterval={snapshot.settings.defaultIntervalMs} onAdd={async (input) => { await action(window.mercariPulse.addSubscription(input)) }} />
           <section className="section-block">
             <div className="section-heading"><div><h2>监控任务</h2><span>{snapshot.subscriptions.length} 个关键词</span></div><label className="task-height-control">可见任务 <input type="range" min="1" max="10" value={snapshot.settings.subscriptionVisibleCount} onChange={(event) => void action(window.mercariPulse.updateSettings({ subscriptionVisibleCount: Number(event.target.value) }))} /><input type="number" min="1" max="10" value={snapshot.settings.subscriptionVisibleCount} onChange={(event) => void action(window.mercariPulse.updateSettings({ subscriptionVisibleCount: Math.max(1, Math.min(10, Number(event.target.value) || 1)) }))} /> 条</label></div>
+            <BulkSubscriptionManager count={snapshot.subscriptions.length} onApply={async (patch) => {
+              const success = await action(window.mercariPulse.updateAllSubscriptions(patch))
+              if (success) setNotice(`已统一更新 ${snapshot.subscriptions.length} 个监控任务`)
+              return success
+            }} />
             <div className="subscription-grid" style={{ maxHeight: `${snapshot.settings.subscriptionVisibleCount * 122}px` }}>
               {snapshot.subscriptions.map((item) => <SubscriptionCard key={item.id} item={item} qqTargets={snapshot.settings.qqBots.flatMap((bot) => bot.targets)}
                 ultraFastAtCapacity={snapshot.subscriptions.filter((other) => other.id !== item.id && other.enabled && other.intervalMs <= 100).length >= snapshot.settings.maxUltraFastSubscriptions}

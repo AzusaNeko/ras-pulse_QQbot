@@ -170,6 +170,12 @@ export interface NewSubscription {
   monitorUpdates?: boolean
 }
 
+export interface BulkSubscriptionPatch {
+  intervalMs?: number
+  monitorUpdates?: boolean
+  windowsNotificationsEnabled?: boolean
+}
+
 export interface MonitorEvent {
   type: 'snapshot' | 'new-item' | 'favorite-update'
   snapshot?: AppSnapshot
@@ -182,6 +188,7 @@ export interface MercariPulseApi {
   getSnapshot(): Promise<AppSnapshot>
   addSubscription(input: NewSubscription): Promise<AppSnapshot>
   updateSubscription(id: string, patch: Partial<Subscription>): Promise<AppSnapshot>
+  updateAllSubscriptions(patch: BulkSubscriptionPatch): Promise<AppSnapshot>
   removeSubscription(id: string, removeRelatedItems: boolean): Promise<AppSnapshot>
   dismissRecentItem(subscriptionId: string, itemId: string): Promise<AppSnapshot>
   addFavorite(item: MercariItem): Promise<AppSnapshot>

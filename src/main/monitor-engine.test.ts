@@ -210,6 +210,21 @@ describe('MonitorEngine baseline', () => {
     engine.stop()
   })
 
+  it('bulk-updates ordinary intervals and notification flags but rejects fast modes', async () => {
+    const engine = new MonitorEngine(new FakeSource(), new MemoryStore())
+    await engine.start()
+    await engine.add({ keyword: '批量一', intervalMs: 1_000 })
+    await engine.add({ keyword: '批量二', intervalMs: 2_000 })
+
+    await engine.updateAll({ intervalMs: 5_000, monitorUpdates: false, windowsNotificationsEnabled: false })
+    expect(engine.snapshot().subscriptions).toHaveLength(2)
+    expect(engine.snapshot().subscriptions.every((item) => item.intervalMs === 5_000 && !item.monitorUpdates && !item.windowsNotificationsEnabled)).toBe(true)
+
+    await expect(engine.updateAll({ intervalMs: 500 })).rejects.toThrow('0.1/0.5 秒模式请在对应关键词中单独设置')
+    expect(engine.snapshot().subscriptions.every((item) => item.intervalMs === 5_000)).toBe(true)
+    engine.stop()
+  })
+
   it('retries a new item after a temporary image validation failure', async () => {
     const source = new FakeSource()
     source.items = [item('m1')]
