@@ -42,6 +42,8 @@ export const defaultState: PersistedState = {
     notificationIncludePrice: true,
     launchMinimized: false,
     defaultIntervalMs: 1_000,
+    maxUltraFastSubscriptions: 1,
+    maxFastSubscriptions: 1,
     subscriptionVisibleCount: 5,
     theme: 'emerald',
     qqBotEnabled: false,
@@ -150,6 +152,11 @@ function normalizeLogs(value: unknown): LogEntry[] {
   }).slice(0, 500)
 }
 
+function normalizeSpeedQuota(value: unknown, fallback: number): number {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? Math.max(0, Math.min(20, Math.trunc(numeric))) : fallback
+}
+
 export class JsonStore implements StateStore {
   /**
    * Multiple keyword checks may finish at the same moment. Serialize disk
@@ -172,6 +179,8 @@ export class JsonStore implements StateStore {
           qqCommandPanelIds: parsed.settings?.qqCommandPanelIds ?? {},
           qqCommandPanelAppId: parsed.settings?.qqCommandPanelAppId ?? '',
           qqBots: normalizeQQBots(parsed.settings),
+          maxUltraFastSubscriptions: normalizeSpeedQuota(parsed.settings?.maxUltraFastSubscriptions, defaultState.settings.maxUltraFastSubscriptions),
+          maxFastSubscriptions: normalizeSpeedQuota(parsed.settings?.maxFastSubscriptions, defaultState.settings.maxFastSubscriptions),
           subscriptionVisibleCount: Math.max(1, Math.min(10, Number(parsed.settings?.subscriptionVisibleCount) || defaultState.settings.subscriptionVisibleCount)),
           theme: ['emerald', 'sapphire', 'violet', 'rose', 'amber', 'obsidian', 'porcelain'].includes(parsed.settings?.theme ?? '') ? parsed.settings?.theme as AppSettings['theme'] : defaultState.settings.theme
         },

@@ -57,10 +57,11 @@ function ItemCard({ item, favorite, onFavorite, onDelete }: { item: MercariItem;
   )
 }
 
-function SubscriptionCard({ item, qqTargets, fastTaken, onChange, onDelete, onCheck }: {
+function SubscriptionCard({ item, qqTargets, ultraFastAtCapacity, fastAtCapacity, onChange, onDelete, onCheck }: {
   item: Subscription
   qqTargets: QQBotTarget[]
-  fastTaken: boolean
+  ultraFastAtCapacity: boolean
+  fastAtCapacity: boolean
   onChange: (id: string, patch: Partial<Subscription>) => void
   onDelete: (id: string) => void
   onCheck: (id: string) => void
@@ -90,7 +91,7 @@ function SubscriptionCard({ item, qqTargets, fastTaken, onChange, onDelete, onCh
               {item.excludeKeyword && `排除：${item.excludeKeyword} · `}
               {item.minPrice != null || item.maxPrice != null
                 ? `${item.minPrice ? price(item.minPrice) : '不限'} — ${item.maxPrice ? price(item.maxPrice) : '不限'} · ` : ''}
-              首次 {item.initialDisplayCount ?? 2} 条 · 每 <select className="inline-interval" value={item.intervalMs} onChange={(event) => onChange(item.id, { intervalMs: Number(event.target.value) })}><option value="500" disabled={item.intervalMs > 500 && fastTaken}>0.5 秒（极速）</option><option value="1000">1 秒</option><option value="2000">2 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option></select> · <label className="inline-check"><input type="checkbox" checked={item.monitorUpdates} onChange={(event) => onChange(item.id, { monitorUpdates: event.target.checked })} />旧商品更新</label> · <label className="inline-check" title="关闭后仍会监控、显示商品动态和 QQ 推送，但不会显示 Windows 右下角通知"><input type="checkbox" checked={item.windowsNotificationsEnabled !== false} onChange={(event) => onChange(item.id, { windowsNotificationsEnabled: event.target.checked })} />Windows 弹窗</label>
+              首次 {item.initialDisplayCount ?? 2} 条 · 每 <select className="inline-interval" value={item.intervalMs} onChange={(event) => onChange(item.id, { intervalMs: Number(event.target.value) })}><option value="100" disabled={item.intervalMs !== 100 && ultraFastAtCapacity}>0.1 秒（极速）</option><option value="500" disabled={item.intervalMs !== 500 && fastAtCapacity}>0.5 秒（快速）</option><option value="1000">1 秒</option><option value="2000">2 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option></select> · <label className="inline-check"><input type="checkbox" checked={item.monitorUpdates} onChange={(event) => onChange(item.id, { monitorUpdates: event.target.checked })} />旧商品更新</label> · <label className="inline-check" title="关闭后仍会监控、显示商品动态和 QQ 推送，但不会显示 Windows 右下角通知"><input type="checkbox" checked={item.windowsNotificationsEnabled !== false} onChange={(event) => onChange(item.id, { windowsNotificationsEnabled: event.target.checked })} />Windows 弹窗</label>
             </p>
             {qqSubscribers.length > 0 && <div className="subscription-qq-targets"><b>QQ 推送：</b>{qqSubscribers.map((target) => <span key={target.id} title={target.targetId}>{target.type === 'group' ? '群聊' : '私聊'} · {target.label || target.detectedNickname || target.targetId}{target.detectedNickname && target.label ? `（${target.detectedNickname}）` : ''}{!target.enabled ? '（已停用）' : ''}</span>)}</div>}
             {addingExclusions && <form className="exclude-editor" onSubmit={(event) => { event.preventDefault(); addExclude() }}>
@@ -378,7 +379,8 @@ export function App(): JSX.Element {
             <div className="section-heading"><div><h2>监控任务</h2><span>{snapshot.subscriptions.length} 个关键词</span></div><label className="task-height-control">可见任务 <input type="range" min="1" max="10" value={snapshot.settings.subscriptionVisibleCount} onChange={(event) => void action(window.mercariPulse.updateSettings({ subscriptionVisibleCount: Number(event.target.value) }))} /><input type="number" min="1" max="10" value={snapshot.settings.subscriptionVisibleCount} onChange={(event) => void action(window.mercariPulse.updateSettings({ subscriptionVisibleCount: Math.max(1, Math.min(10, Number(event.target.value) || 1)) }))} /> 条</label></div>
             <div className="subscription-grid" style={{ maxHeight: `${snapshot.settings.subscriptionVisibleCount * 122}px` }}>
               {snapshot.subscriptions.map((item) => <SubscriptionCard key={item.id} item={item} qqTargets={snapshot.settings.qqBots.flatMap((bot) => bot.targets)}
-                fastTaken={snapshot.subscriptions.some((other) => other.id !== item.id && other.intervalMs <= 500)}
+                ultraFastAtCapacity={snapshot.subscriptions.filter((other) => other.id !== item.id && other.enabled && other.intervalMs <= 100).length >= snapshot.settings.maxUltraFastSubscriptions}
+                fastAtCapacity={snapshot.subscriptions.filter((other) => other.id !== item.id && other.enabled && other.intervalMs > 100 && other.intervalMs <= 500).length >= snapshot.settings.maxFastSubscriptions}
                 onChange={(id, patch) => void action(window.mercariPulse.updateSubscription(id, patch))}
                 onCheck={(id) => void action(window.mercariPulse.checkNow(id))}
                 onDelete={(id) => {
@@ -424,12 +426,14 @@ export function App(): JSX.Element {
             <Setting label="测试后台通知" detail="使用最新一条商品动态预览当前通知组合"><button className="secondary-button" onClick={() => void window.mercariPulse.testNotification().then((result) => setNotice(result.supported ? '测试通知已发送' : '系统通知不可用，已尝试托盘气泡提醒')).catch((error) => setNotice(String(error)))}>发送测试通知</button></Setting>
             <Setting label="通知声音" detail="使用操作系统的默认提示音"><label className="switch"><input type="checkbox" checked={snapshot.settings.soundEnabled} onChange={(e) => void action(window.mercariPulse.updateSettings({ soundEnabled: e.target.checked }))} /><span /></label></Setting>
             <Setting label="启动时最小化" detail="应用启动后直接驻留系统托盘"><label className="switch"><input type="checkbox" checked={snapshot.settings.launchMinimized} onChange={(e) => void action(window.mercariPulse.updateSettings({ launchMinimized: e.target.checked }))} /><span /></label></Setting>
-            <Setting label="默认检查间隔" detail="极速模式请求更频繁，可能更易触发限流"><select value={snapshot.settings.defaultIntervalMs} onChange={(e) => void action(window.mercariPulse.updateSettings({ defaultIntervalMs: Number(e.target.value) }))}><option value="500">0.5 秒（极速）</option><option value="1000">1 秒</option><option value="2000">2 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option></select></Setting>
+            <Setting label="默认检查间隔" detail="0.1 秒与 0.5 秒模式请求频繁，更容易触发限流"><select value={snapshot.settings.defaultIntervalMs} onChange={(e) => void action(window.mercariPulse.updateSettings({ defaultIntervalMs: Number(e.target.value) }))}><option value="100">0.1 秒（极速）</option><option value="500">0.5 秒（快速）</option><option value="1000">1 秒</option><option value="2000">2 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option></select></Setting>
             <Setting label="当前版本" detail="版本号由当前运行的安装包自动读取"><span className="app-version-badge">V{appVersion || '读取中'}</span></Setting>
           </section>
           <section className="settings-panel personalization-panel">
             <div className="personalization-heading"><p className="eyebrow">PERSONALIZATION</p><h2>个性化设置</h2><span>选择偏好的界面主题颜色，设置会自动保存。</span></div>
             <Setting label="主题颜色" detail="改变软件界面配色，不影响商品图片"><select value={snapshot.settings.theme} onChange={(e) => void action(window.mercariPulse.updateSettings({ theme: e.target.value as AppSnapshot['settings']['theme'] }))}><option value="emerald">翡翠绿（默认）</option><option value="sapphire">深海蓝</option><option value="violet">暮光紫</option><option value="rose">玫瑰粉</option><option value="amber">琥珀金</option><option value="obsidian">曜石黑</option><option value="porcelain">极简白</option></select></Setting>
+            <Setting label="极速模式任务数" detail="允许同时运行 0.1 秒轮询的关键词数量；0 表示禁用"><input className="quota-input" type="number" min="0" max="20" value={snapshot.settings.maxUltraFastSubscriptions} onChange={(e) => void action(window.mercariPulse.updateSettings({ maxUltraFastSubscriptions: Number(e.target.value) }))} /></Setting>
+            <Setting label="快速模式任务数" detail="允许同时运行 0.5 秒轮询的关键词数量；0 表示禁用"><input className="quota-input" type="number" min="0" max="20" value={snapshot.settings.maxFastSubscriptions} onChange={(e) => void action(window.mercariPulse.updateSettings({ maxFastSubscriptions: Number(e.target.value) }))} /></Setting>
           </section>
           <div className="notice-box"><b>关于 1 秒延迟</b><p>应用每约 1 秒发起一次检查，但最终发现延迟还取决于 Mercari 搜索索引更新时间、网络 RTT 和接口限流。失败时会自动退避，恢复后回到设定间隔。</p></div>
         </>}

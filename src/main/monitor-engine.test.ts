@@ -193,12 +193,20 @@ describe('MonitorEngine baseline', () => {
     engine.stop()
   })
 
-  it('allows only one fast polling subscription', async () => {
+  it('enforces separately configurable 100 ms and 500 ms task quotas', async () => {
     const engine = new MonitorEngine(new FakeSource(), new MemoryStore())
     await engine.start()
-    await engine.add({ keyword: '关键词一', intervalMs: 500 })
-    await expect(engine.add({ keyword: '关键词二', intervalMs: 500 })).rejects.toThrow('极速模式只允许一个关键词使用')
-    await expect(engine.add({ keyword: '关键词二', intervalMs: 1_000 })).resolves.toBeDefined()
+    await engine.updateSettings({ maxUltraFastSubscriptions: 2, maxFastSubscriptions: 2 })
+    const ultraOne = await engine.add({ keyword: '极速一', intervalMs: 100 })
+    await engine.add({ keyword: '极速二', intervalMs: 100 })
+    await expect(engine.add({ keyword: '极速三', intervalMs: 100 })).rejects.toThrow('0.1 秒极速模式配额已满')
+    await engine.update(ultraOne.subscriptions.find((item) => item.keyword === '极速一')!.id, { enabled: false, status: 'paused' })
+    await expect(engine.add({ keyword: '极速三', intervalMs: 100 })).resolves.toBeDefined()
+    await engine.add({ keyword: '快速一', intervalMs: 500 })
+    await engine.add({ keyword: '快速二', intervalMs: 500 })
+    await expect(engine.add({ keyword: '快三', intervalMs: 500 })).rejects.toThrow('0.5 秒快速模式配额已满')
+    await expect(engine.add({ keyword: '普通', intervalMs: 1_000 })).resolves.toBeDefined()
+    await expect(engine.updateSettings({ maxUltraFastSubscriptions: 1 })).rejects.toThrow('当前有 2 个关键词使用 0.1 秒极速模式')
     engine.stop()
   })
 

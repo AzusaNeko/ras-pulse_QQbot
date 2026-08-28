@@ -83,6 +83,10 @@ export interface AppSettings {
   notificationIncludePrice: boolean
   launchMinimized: boolean
   defaultIntervalMs: number
+  /** Maximum enabled keyword tasks allowed to poll every 100 ms. */
+  maxUltraFastSubscriptions: number
+  /** Maximum enabled keyword tasks allowed to poll every 500 ms. */
+  maxFastSubscriptions: number
   /** Number of expanded monitoring tasks visible before their list scrolls. */
   subscriptionVisibleCount: number
   theme: AppTheme
