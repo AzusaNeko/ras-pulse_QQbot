@@ -80,7 +80,7 @@ function SubscriptionCard({ item, qqTargets, ultraFastAtCapacity, fastAtCapacity
   }
   const qqSubscribers = qqTargets.filter((target) => target.keywords.some((keyword) => keyword.keyword.toLocaleLowerCase() === item.keyword.toLocaleLowerCase()))
   return (
-    <article className={`subscription-card status-${item.status}`}>
+    <article className={`subscription-card status-${item.status} ${item.error ? 'has-error' : ''}`}>
       <div className="subscription-main">
         <div className="status-orbit"><span /></div>
         <div className="subscription-copy">

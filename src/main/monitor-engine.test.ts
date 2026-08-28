@@ -325,6 +325,25 @@ describe('MonitorEngine baseline', () => {
     engine.stop()
   })
 
+  it('keeps an error visible until a later check succeeds', async () => {
+    const source = new FakeSource()
+    source.items = [item('baseline')]
+    const engine = new MonitorEngine(source, new MemoryStore())
+    await engine.start()
+    const snapshot = await engine.add({ keyword: '超时测试', initialDisplayCount: 1 })
+    const subscriptionId = snapshot.subscriptions[0].id
+    await engine.checkNow(subscriptionId)
+
+    source.searchError = new Error('fetch timeout')
+    await engine.checkNow(subscriptionId)
+    expect(engine.snapshot().subscriptions[0]).toMatchObject({ status: 'backoff', error: 'fetch timeout' })
+
+    source.searchError = undefined
+    await engine.checkNow(subscriptionId)
+    expect(engine.snapshot().subscriptions[0]).toMatchObject({ status: 'watching', error: undefined })
+    engine.stop()
+  })
+
   it('surfaces a newly observed old listing when it was edited after monitoring began', async () => {
     const source = new FakeSource()
     const engine = new MonitorEngine(source, new MemoryStore())
