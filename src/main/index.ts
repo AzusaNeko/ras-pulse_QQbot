@@ -236,6 +236,7 @@ function registerIpc(): void {
   ipcMain.handle('monitor:snapshot', () => engine.snapshot())
   ipcMain.handle('monitor:add', (_event, input: NewSubscription) => engine.add(input))
   ipcMain.handle('monitor:update', (_event, id: string, patch: Partial<Subscription>) => engine.update(id, patch))
+  ipcMain.handle('monitor:reorder', (_event, ids: string[]) => engine.reorder(ids))
   ipcMain.handle('monitor:update-all', (_event, patch: BulkSubscriptionPatch) => engine.updateAll(patch))
   ipcMain.handle('monitor:remove', async (_event, id: string, removeRelatedItems: boolean) => {
     const snapshot = engine.snapshot()

@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('mercariPulse', {
   getSnapshot: () => ipcRenderer.invoke('monitor:snapshot'),
   addSubscription: (input: NewSubscription) => ipcRenderer.invoke('monitor:add', input),
   updateSubscription: (id: string, patch: Partial<Subscription>) => ipcRenderer.invoke('monitor:update', id, patch),
+  reorderSubscriptions: (ids: string[]) => ipcRenderer.invoke('monitor:reorder', ids),
   updateAllSubscriptions: (patch: BulkSubscriptionPatch) => ipcRenderer.invoke('monitor:update-all', patch),
   removeSubscription: (id: string, removeRelatedItems: boolean) => ipcRenderer.invoke('monitor:remove', id, removeRelatedItems),
   dismissRecentItem: (subscriptionId: string, itemId: string) => ipcRenderer.invoke('monitor:dismiss-item', subscriptionId, itemId),

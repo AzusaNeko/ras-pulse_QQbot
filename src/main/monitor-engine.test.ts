@@ -225,6 +225,20 @@ describe('MonitorEngine baseline', () => {
     engine.stop()
   })
 
+  it('persists a manually arranged subscription order', async () => {
+    const engine = new MonitorEngine(new FakeSource(), new MemoryStore())
+    await engine.start()
+    await engine.add({ keyword: '第一' })
+    await engine.add({ keyword: '第二' })
+    const ids = engine.snapshot().subscriptions.map((subscription) => subscription.id)
+
+    await engine.reorder([...ids].reverse())
+
+    expect(engine.snapshot().subscriptions.map((subscription) => subscription.id)).toEqual([...ids].reverse())
+    await expect(engine.reorder([ids[0]])).rejects.toThrow('排序数据无效')
+    engine.stop()
+  })
+
   it('refreshes enabled tasks together while skipping paused tasks', async () => {
     const source = new FakeSource()
     source.items = [item('refresh')]

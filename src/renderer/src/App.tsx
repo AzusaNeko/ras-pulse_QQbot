@@ -93,11 +93,15 @@ function BulkSubscriptionManager({ count, onApply, onRefresh }: { count: number;
   </div>
 }
 
-function SubscriptionCard({ item, qqTargets, ultraFastAtCapacity, fastAtCapacity, onChange, onDelete, onCheck }: {
+function SubscriptionCard({ item, qqTargets, ultraFastAtCapacity, fastAtCapacity, dragging, onDragStart, onDragEnd, onDrop, onChange, onDelete, onCheck }: {
   item: Subscription
   qqTargets: QQBotTarget[]
   ultraFastAtCapacity: boolean
   fastAtCapacity: boolean
+  dragging: boolean
+  onDragStart: (id: string) => void
+  onDragEnd: () => void
+  onDrop: (id: string) => void
   onChange: (id: string, patch: Partial<Subscription>) => void
   onDelete: (id: string) => void
   onCheck: (id: string) => void
@@ -116,8 +120,9 @@ function SubscriptionCard({ item, qqTargets, ultraFastAtCapacity, fastAtCapacity
   }
   const qqSubscribers = qqTargets.filter((target) => target.keywords.some((keyword) => keyword.keyword.toLocaleLowerCase() === item.keyword.toLocaleLowerCase()))
   return (
-    <article className={`subscription-card status-${item.status} ${item.error ? 'has-error' : ''}`}>
+    <article className={`subscription-card status-${item.status} ${item.error ? 'has-error' : ''} ${dragging ? 'dragging' : ''}`} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move' }} onDrop={(event) => { event.preventDefault(); onDrop(item.id) }}>
       <div className="subscription-main">
+        <button className="drag-handle" type="button" draggable title="拖动调整任务排序" aria-label={`拖动调整“${item.keyword}”的排序`} onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', item.id); onDragStart(item.id) }} onDragEnd={onDragEnd}>⠿</button>
         <div className="status-orbit"><span /></div>
         <div className="subscription-copy">
           <div className="subscription-title"><h3>{item.keyword}</h3><span className="status-label">{item.cooldownUntil && item.cooldownUntil > Date.now() ? '冷却中' : statusLabels[item.status]}</span></div>
@@ -335,6 +340,7 @@ export function App(): JSX.Element {
   const [itemFilter, setItemFilter] = useState<'all' | string>('all')
   const [favoriteFilter, setFavoriteFilter] = useState<'all' | 'auction' | 'direct' | 'sold' | 'available'>('all')
   const [pendingRemoval, setPendingRemoval] = useState<Subscription | null>(null)
+  const [draggingSubscriptionId, setDraggingSubscriptionId] = useState<string | undefined>()
   const [, forceClock] = useState(0)
 
   useEffect(() => {
@@ -390,6 +396,17 @@ export function App(): JSX.Element {
     } catch (error) { setNotice(error instanceof Error ? error.message : String(error)); return false }
   }
 
+  async function reorderSubscription(sourceId: string, targetId: string): Promise<void> {
+    if (!snapshot || sourceId === targetId) return
+    const from = snapshot.subscriptions.findIndex((item) => item.id === sourceId)
+    const to = snapshot.subscriptions.findIndex((item) => item.id === targetId)
+    if (from < 0 || to < 0) return
+    const ordered = [...snapshot.subscriptions]
+    const [moved] = ordered.splice(from, 1)
+    ordered.splice(to, 0, moved)
+    if (await action(window.mercariPulse.reorderSubscriptions(ordered.map((item) => item.id)))) setNotice('已调整监控任务排序')
+  }
+
   if (bootError) return <main className="loading"><div className="pulse-logo">!</div><p>{bootError}</p></main>
   if (!snapshot) return <main className="loading"><div className="pulse-logo">M</div><p>正在启动监控引擎…</p></main>
 
@@ -425,7 +442,8 @@ export function App(): JSX.Element {
               } catch (error) { setNotice(error instanceof Error ? error.message : String(error)) }
             }} />
             <div className="subscription-grid" style={{ maxHeight: `${snapshot.settings.subscriptionVisibleCount * 122}px` }}>
-              {snapshot.subscriptions.map((item) => <SubscriptionCard key={item.id} item={item} qqTargets={snapshot.settings.qqBots.flatMap((bot) => bot.targets)}
+              {snapshot.subscriptions.map((item) => <SubscriptionCard key={item.id} item={item} qqTargets={snapshot.settings.qqBots.flatMap((bot) => bot.targets)} dragging={draggingSubscriptionId === item.id}
+                onDragStart={setDraggingSubscriptionId} onDragEnd={() => setDraggingSubscriptionId(undefined)} onDrop={(targetId) => { const sourceId = draggingSubscriptionId; setDraggingSubscriptionId(undefined); if (sourceId) void reorderSubscription(sourceId, targetId) }}
                 ultraFastAtCapacity={snapshot.subscriptions.filter((other) => other.id !== item.id && other.enabled && other.intervalMs <= 100).length >= snapshot.settings.maxUltraFastSubscriptions}
                 fastAtCapacity={snapshot.subscriptions.filter((other) => other.id !== item.id && other.enabled && other.intervalMs > 100 && other.intervalMs <= 500).length >= snapshot.settings.maxFastSubscriptions}
                 onChange={(id, patch) => void action(window.mercariPulse.updateSubscription(id, patch))}

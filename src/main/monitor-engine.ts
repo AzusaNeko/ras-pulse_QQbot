@@ -144,6 +144,18 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     return this.snapshot()
   }
 
+  async reorder(ids: string[]): Promise<AppSnapshot> {
+    const currentIds = this.state.subscriptions.map((subscription) => subscription.id)
+    if (ids.length !== currentIds.length || new Set(ids).size !== ids.length || ids.some((id) => !currentIds.includes(id))) {
+      throw new Error('监控任务排序数据无效，请刷新后重试。')
+    }
+    const byId = new Map(this.state.subscriptions.map((subscription) => [subscription.id, subscription]))
+    this.state.subscriptions = ids.map((id) => byId.get(id)!)
+    this.recordLog('info', '已调整监控任务排序。')
+    await this.persistAndEmit()
+    return this.snapshot()
+  }
+
   async updateAll(patch: BulkSubscriptionPatch): Promise<AppSnapshot> {
     if (!this.state.subscriptions.length) return this.snapshot()
     const intervalMs = patch.intervalMs === undefined ? undefined : Math.max(MIN_INTERVAL_MS, patch.intervalMs)

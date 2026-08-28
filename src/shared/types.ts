@@ -189,6 +189,7 @@ export interface MercariPulseApi {
   getSnapshot(): Promise<AppSnapshot>
   addSubscription(input: NewSubscription): Promise<AppSnapshot>
   updateSubscription(id: string, patch: Partial<Subscription>): Promise<AppSnapshot>
+  reorderSubscriptions(ids: string[]): Promise<AppSnapshot>
   updateAllSubscriptions(patch: BulkSubscriptionPatch): Promise<AppSnapshot>
   removeSubscription(id: string, removeRelatedItems: boolean): Promise<AppSnapshot>
   dismissRecentItem(subscriptionId: string, itemId: string): Promise<AppSnapshot>
