@@ -93,13 +93,15 @@ function BulkSubscriptionManager({ count, onApply, onRefresh }: { count: number;
   </div>
 }
 
-function SubscriptionCard({ item, qqTargets, ultraFastAtCapacity, fastAtCapacity, dragging, onDragStart, onDragEnd, onDrop, onChange, onDelete, onCheck }: {
+function SubscriptionCard({ item, qqTargets, ultraFastAtCapacity, fastAtCapacity, dragging, dropTarget, onDragStart, onDragEnter, onDragEnd, onDrop, onChange, onDelete, onCheck }: {
   item: Subscription
   qqTargets: QQBotTarget[]
   ultraFastAtCapacity: boolean
   fastAtCapacity: boolean
   dragging: boolean
+  dropTarget: boolean
   onDragStart: (id: string) => void
+  onDragEnter: (id: string) => void
   onDragEnd: () => void
   onDrop: (id: string) => void
   onChange: (id: string, patch: Partial<Subscription>) => void
@@ -120,9 +122,9 @@ function SubscriptionCard({ item, qqTargets, ultraFastAtCapacity, fastAtCapacity
   }
   const qqSubscribers = qqTargets.filter((target) => target.keywords.some((keyword) => keyword.keyword.toLocaleLowerCase() === item.keyword.toLocaleLowerCase()))
   return (
-    <article className={`subscription-card status-${item.status} ${item.error ? 'has-error' : ''} ${dragging ? 'dragging' : ''}`} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move' }} onDrop={(event) => { event.preventDefault(); onDrop(item.id) }}>
+    <article className={`subscription-card status-${item.status} ${item.error ? 'has-error' : ''} ${dragging ? 'dragging' : ''} ${dropTarget ? 'drop-target' : ''}`} onDragEnter={() => onDragEnter(item.id)} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move' }} onDrop={(event) => { event.preventDefault(); onDrop(item.id) }}>
       <div className="subscription-main">
-        <button className="drag-handle" type="button" draggable title="拖动调整任务排序" aria-label={`拖动调整“${item.keyword}”的排序`} onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', item.id); onDragStart(item.id) }} onDragEnd={onDragEnd}>⠿</button>
+        <button className="drag-handle" type="button" draggable title="拖动调整任务排序" aria-label={`拖动调整“${item.keyword}”的排序`} onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', item.id); const card = event.currentTarget.closest<HTMLElement>('.subscription-card'); if (card) event.dataTransfer.setDragImage(card, Math.min(card.clientWidth / 2, 180), Math.min(card.clientHeight / 2, 42)); onDragStart(item.id) }} onDragEnd={onDragEnd}>⠿</button>
         <div className="status-orbit"><span /></div>
         <div className="subscription-copy">
           <div className="subscription-title"><h3>{item.keyword}</h3><span className="status-label">{item.cooldownUntil && item.cooldownUntil > Date.now() ? '冷却中' : statusLabels[item.status]}</span></div>
@@ -341,6 +343,7 @@ export function App(): JSX.Element {
   const [favoriteFilter, setFavoriteFilter] = useState<'all' | 'auction' | 'direct' | 'sold' | 'available'>('all')
   const [pendingRemoval, setPendingRemoval] = useState<Subscription | null>(null)
   const [draggingSubscriptionId, setDraggingSubscriptionId] = useState<string | undefined>()
+  const [dragOverSubscriptionId, setDragOverSubscriptionId] = useState<string | undefined>()
   const [, forceClock] = useState(0)
 
   useEffect(() => {
@@ -442,8 +445,8 @@ export function App(): JSX.Element {
               } catch (error) { setNotice(error instanceof Error ? error.message : String(error)) }
             }} />
             <div className="subscription-grid" style={{ maxHeight: `${snapshot.settings.subscriptionVisibleCount * 122}px` }}>
-              {snapshot.subscriptions.map((item) => <SubscriptionCard key={item.id} item={item} qqTargets={snapshot.settings.qqBots.flatMap((bot) => bot.targets)} dragging={draggingSubscriptionId === item.id}
-                onDragStart={setDraggingSubscriptionId} onDragEnd={() => setDraggingSubscriptionId(undefined)} onDrop={(targetId) => { const sourceId = draggingSubscriptionId; setDraggingSubscriptionId(undefined); if (sourceId) void reorderSubscription(sourceId, targetId) }}
+              {snapshot.subscriptions.map((item) => <SubscriptionCard key={item.id} item={item} qqTargets={snapshot.settings.qqBots.flatMap((bot) => bot.targets)} dragging={draggingSubscriptionId === item.id} dropTarget={dragOverSubscriptionId === item.id && draggingSubscriptionId !== item.id}
+                onDragStart={(id) => { setDraggingSubscriptionId(id); setDragOverSubscriptionId(undefined) }} onDragEnter={setDragOverSubscriptionId} onDragEnd={() => { setDraggingSubscriptionId(undefined); setDragOverSubscriptionId(undefined) }} onDrop={(targetId) => { const sourceId = draggingSubscriptionId; setDraggingSubscriptionId(undefined); setDragOverSubscriptionId(undefined); if (sourceId) void reorderSubscription(sourceId, targetId) }}
                 ultraFastAtCapacity={snapshot.subscriptions.filter((other) => other.id !== item.id && other.enabled && other.intervalMs <= 100).length >= snapshot.settings.maxUltraFastSubscriptions}
                 fastAtCapacity={snapshot.subscriptions.filter((other) => other.id !== item.id && other.enabled && other.intervalMs > 100 && other.intervalMs <= 500).length >= snapshot.settings.maxFastSubscriptions}
                 onChange={(id, patch) => void action(window.mercariPulse.updateSubscription(id, patch))}
