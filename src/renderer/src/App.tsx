@@ -57,11 +57,12 @@ function ItemCard({ item, favorite, onFavorite, onDelete }: { item: MercariItem;
   )
 }
 
-function BulkSubscriptionManager({ count, onApply }: { count: number; onApply: (patch: BulkSubscriptionPatch) => Promise<boolean> }): JSX.Element {
+function BulkSubscriptionManager({ count, onApply, onRefresh }: { count: number; onApply: (patch: BulkSubscriptionPatch) => Promise<boolean>; onRefresh: () => Promise<void> }): JSX.Element {
   const [interval, setIntervalValue] = useState('')
   const [updates, setUpdates] = useState('')
   const [notifications, setNotifications] = useState('')
   const [busy, setBusy] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const hasChanges = Boolean(interval || updates || notifications)
   const apply = async (): Promise<void> => {
     const patch: BulkSubscriptionPatch = {}
@@ -77,12 +78,17 @@ function BulkSubscriptionManager({ count, onApply }: { count: number; onApply: (
       }
     } finally { setBusy(false) }
   }
+  const refresh = async (): Promise<void> => {
+    setRefreshing(true)
+    try { await onRefresh() } finally { setRefreshing(false) }
+  }
   return <div className="bulk-task-manager">
     <b>统一管理</b>
     <label>查询时间<select value={interval} onChange={(event) => setIntervalValue(event.target.value)}><option value="">保持不变</option><option value="1000">1 秒</option><option value="2000">2 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option></select></label>
     <label>旧商品更新<select value={updates} onChange={(event) => setUpdates(event.target.value)}><option value="">保持不变</option><option value="on">全部开启</option><option value="off">全部关闭</option></select></label>
     <label>Windows 弹窗<select value={notifications} onChange={(event) => setNotifications(event.target.value)}><option value="">保持不变</option><option value="on">全部开启</option><option value="off">全部关闭</option></select></label>
-    <button className="secondary-button" disabled={!count || !hasChanges || busy} onClick={() => void apply()}>{busy ? '应用中…' : `应用到 ${count} 个任务`}</button>
+    <button className="secondary-button" disabled={!count || refreshing} onClick={() => void refresh()}>{refreshing ? '刷新中…' : '统一刷新'}</button>
+    <button className="secondary-button" disabled={!count || !hasChanges || busy || refreshing} onClick={() => void apply()}>{busy ? '应用中…' : `应用到 ${count} 个任务`}</button>
     <small>0.1/0.5 秒模式需在单个关键词中设置</small>
   </div>
 }
@@ -412,6 +418,11 @@ export function App(): JSX.Element {
               const success = await action(window.mercariPulse.updateAllSubscriptions(patch))
               if (success) setNotice(`已统一更新 ${snapshot.subscriptions.length} 个监控任务`)
               return success
+            }} onRefresh={async () => {
+              try {
+                const result = await window.mercariPulse.checkAllNow()
+                setNotice(result.requested ? `已开始刷新 ${result.requested} 个任务${result.skipped ? `，跳过 ${result.skipped} 个` : ''}` : '没有可立即刷新的任务')
+              } catch (error) { setNotice(error instanceof Error ? error.message : String(error)) }
             }} />
             <div className="subscription-grid" style={{ maxHeight: `${snapshot.settings.subscriptionVisibleCount * 122}px` }}>
               {snapshot.subscriptions.map((item) => <SubscriptionCard key={item.id} item={item} qqTargets={snapshot.settings.qqBots.flatMap((bot) => bot.targets)}

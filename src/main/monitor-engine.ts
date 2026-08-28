@@ -233,6 +233,30 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     await this.check(id, true)
   }
 
+  /** Refresh enabled tasks with small controlled concurrency to avoid a request burst. */
+  async checkAllNow(): Promise<{ requested: number; skipped: number }> {
+    const now = Date.now()
+    const candidates = this.state.subscriptions.filter((subscription) => (
+      subscription.enabled &&
+      !this.running.has(subscription.id) &&
+      (subscription.cooldownUntil ?? 0) <= now
+    )).map((subscription) => subscription.id)
+    const skipped = this.state.subscriptions.length - candidates.length
+    if (!candidates.length) return { requested: 0, skipped }
+    this.recordLog('info', `开始统一刷新 ${candidates.length} 个监控任务${skipped ? `，跳过 ${skipped} 个暂停、检查中或冷却中的任务` : ''}。`)
+    await this.persistAndEmit()
+    let next = 0
+    const worker = async (): Promise<void> => {
+      while (next < candidates.length) {
+        const id = candidates[next]
+        next += 1
+        await this.check(id, true)
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(2, candidates.length) }, worker))
+    return { requested: candidates.length, skipped }
+  }
+
   private schedule(id: string, delay?: number): void {
     const oldTimer = this.timers.get(id)
     if (oldTimer) clearTimeout(oldTimer)

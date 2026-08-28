@@ -225,6 +225,23 @@ describe('MonitorEngine baseline', () => {
     engine.stop()
   })
 
+  it('refreshes enabled tasks together while skipping paused tasks', async () => {
+    const source = new FakeSource()
+    source.items = [item('refresh')]
+    const engine = new MonitorEngine(source, new MemoryStore())
+    await engine.start()
+    const first = await engine.add({ keyword: '刷新一', intervalMs: 1_000 })
+    const second = await engine.add({ keyword: '刷新二', intervalMs: 1_000 })
+    const pausedId = first.subscriptions.find((item) => item.keyword === '刷新一')!.id
+    await engine.update(pausedId, { enabled: false, status: 'paused' })
+    const result = await engine.checkAllNow()
+
+    expect(result).toEqual({ requested: 1, skipped: 1 })
+    expect(engine.snapshot().subscriptions.find((item) => item.id === pausedId)?.lastSuccessAt).toBeUndefined()
+    expect(engine.snapshot().subscriptions.find((item) => item.id === second.subscriptions.find((item) => item.keyword === '刷新二')?.id)?.lastSuccessAt).toBeDefined()
+    engine.stop()
+  })
+
   it('retries a new item after a temporary image validation failure', async () => {
     const source = new FakeSource()
     source.items = [item('m1')]

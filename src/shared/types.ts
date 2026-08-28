@@ -195,6 +195,7 @@ export interface MercariPulseApi {
   removeFavorite(itemId: string): Promise<AppSnapshot>
   updateSettings(patch: Partial<AppSettings>): Promise<AppSnapshot>
   checkNow(id: string): Promise<void>
+  checkAllNow(): Promise<{ requested: number; skipped: number }>
   testNotification(): Promise<{ supported: boolean }>
   getQQBotConfig(): Promise<QQBotConfig>
   saveQQBotConfig(input: SaveQQBotConfigInput): Promise<QQBotConfig>

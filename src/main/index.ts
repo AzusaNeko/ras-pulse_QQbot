@@ -274,6 +274,7 @@ function registerIpc(): void {
   ipcMain.handle('favorites:add', (_event, item: MercariItem) => engine.addFavorite(item))
   ipcMain.handle('favorites:remove', (_event, itemId: string) => engine.removeFavorite(itemId))
   ipcMain.handle('monitor:check-now', (_event, id: string) => engine.checkNow(id))
+  ipcMain.handle('monitor:check-all-now', () => engine.checkAllNow())
   ipcMain.handle('notifications:test', async () => {
     const snapshot = engine.snapshot()
     const latestItem = snapshot.recentItems[0]
