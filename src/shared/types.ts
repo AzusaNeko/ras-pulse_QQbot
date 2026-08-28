@@ -49,7 +49,8 @@ export interface MercariItem {
   detectedAt: number
   subscriptionId: string
   keyword: string
-  discoveryType?: 'baseline' | 'new' | 'updated'
+  /** How this item entered the activity feed. Offline items never trigger notifications. */
+  discoveryType?: 'baseline' | 'new' | 'updated' | 'offline'
 }
 
 export interface FavoriteItem {

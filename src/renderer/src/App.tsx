@@ -48,7 +48,7 @@ function ItemCard({ item, favorite, onFavorite, onDelete }: { item: MercariItem;
         <img src={item.thumbnail} alt="" onLoad={() => setImageStatus('ready')} onError={() => setImageStatus('failed')} />
       </div>
       <div className="item-copy">
-        <div className="item-topline"><span className={`keyword-pill ${item.discoveryType === 'updated' ? 'updated' : ''}`}>{item.keyword} · {item.discoveryType === 'baseline' ? '初始结果' : item.discoveryType === 'updated' ? '旧商品更新' : '上新'}</span><time>{listingTime(item)}</time></div>
+        <div className="item-topline"><span className={`keyword-pill ${item.discoveryType === 'updated' ? 'updated' : item.discoveryType === 'offline' ? 'offline' : ''}`}>{item.keyword} · {item.discoveryType === 'baseline' ? '初始结果' : item.discoveryType === 'updated' ? '旧商品更新' : item.discoveryType === 'offline' ? '离线期间上新' : '上新'}</span><time>{listingTime(item)}</time></div>
         <strong>{item.name}</strong>
         {item.discoveryType === 'updated' && <small className="item-update-summary">更新：{item.updateSummary ?? '卖家编辑了商品信息'}</small>}
         <div className="item-bottom"><div><b>{price(item.price)}</b><i className={`sale-type ${item.isAuction === true ? 'auction' : ''}`}>{item.isAuction === true ? '拍卖商品' : item.isAuction === false ? '直售商品' : '煤炉直售类'}</i>{sold && <i className="listing-status sold">已售</i>}</div><span>打开商品 ↗</span></div>

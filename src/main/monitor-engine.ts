@@ -297,13 +297,22 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
 
       if (prior) {
         if (this.startupResyncPending.delete(id)) {
-          // Anything returned by the first successful check existed before
-          // this running session could observe it. Remember it without
-          // producing desktop/QQ alerts, then resume normal polling.
+          // The app may have been closed while items appeared. Add listings
+          // that were not in the previous seen baseline to the activity feed,
+          // but deliberately do not emit `newItem`: no desktop or QQ replay
+          // should occur just because the app restarted.
+          const offlineItems = await this.withAccessibleImages(items.filter((item) => !seen.has(item.id)))
           const nextSeen = [...new Set([...items.map((item) => item.id), ...seen])].slice(0, MAX_SEEN_IDS)
           this.state.seenBySubscription[id] = nextSeen
           this.recordObservedUpdates(id, items, nextSeen)
-          this.recordLog('info', `启动基线同步完成：${subscription.keyword}，已静默同步 ${items.length} 条结果。`)
+          for (const item of offlineItems.reverse()) {
+            item.discoveryType = 'offline'
+            this.state.recentItems = this.retainRecentItems([
+              item,
+              ...this.state.recentItems.filter((old) => !(old.subscriptionId === item.subscriptionId && old.id === item.id))
+            ])
+          }
+          this.recordLog('info', `启动同步完成：${subscription.keyword}，已补充 ${offlineItems.length} 条离线期间上新（不发送通知）。`)
           return
         }
         await this.retryMissingBaseline(id, subscription, items, manual)

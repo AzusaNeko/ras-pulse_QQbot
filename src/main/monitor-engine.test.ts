@@ -93,7 +93,7 @@ describe('MonitorEngine baseline', () => {
     engine.stop()
   })
 
-  it('silently resyncs listings accumulated while the app was offline', async () => {
+  it('adds listings accumulated while offline to activity without emitting notifications', async () => {
     const source = new FakeSource()
     const store = new MemoryStore()
     const subscription: Subscription = {
@@ -122,7 +122,7 @@ describe('MonitorEngine baseline', () => {
     await engine.checkNow(subscription.id)
 
     expect(notified).toHaveLength(0)
-    expect(engine.snapshot().recentItems).toHaveLength(0)
+    expect(engine.snapshot().recentItems).toMatchObject([{ id: 'while-offline', discoveryType: 'offline' }])
     expect(store.state.seenBySubscription[subscription.id]).toContain('while-offline')
 
     source.items = [item('after-restart'), ...source.items]
