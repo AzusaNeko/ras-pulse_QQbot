@@ -154,7 +154,10 @@ export interface SaveQQBotConfigInput {
 
 export interface AppSnapshot {
   subscriptions: Subscription[]
+  /** Per-keyword activity storage, capped independently at 200 entries per keyword. */
   recentItems: MercariItem[]
+  /** Latest 300 activity entries used exclusively by the “全部” view. */
+  globalRecentItems: MercariItem[]
   favorites: FavoriteItem[]
   logs: LogEntry[]
   settings: AppSettings

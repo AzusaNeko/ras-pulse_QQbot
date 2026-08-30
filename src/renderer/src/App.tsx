@@ -398,7 +398,10 @@ export function App(): JSX.Element {
   }, [notice])
 
   const activeCount = useMemo(() => snapshot?.subscriptions.filter((item) => item.enabled).length ?? 0, [snapshot])
-  const filteredItems = useMemo(() => snapshot?.recentItems.filter((item) => itemFilter === 'all' || item.subscriptionId === itemFilter) ?? [], [snapshot, itemFilter])
+  const filteredItems = useMemo(() => {
+    if (!snapshot) return []
+    return itemFilter === 'all' ? snapshot.globalRecentItems : snapshot.recentItems.filter((item) => item.subscriptionId === itemFilter)
+  }, [snapshot, itemFilter])
   const filteredFavorites = useMemo(() => (snapshot?.favorites ?? []).filter((favorite) => {
     if (favoriteFilter === 'all') return true
     if (favoriteFilter === 'auction') return favorite.isAuction === true
@@ -480,7 +483,7 @@ export function App(): JSX.Element {
           </section>
           <section className="section-block items-section">
             <div className="section-heading"><div><h2>商品动态</h2><span>首次显示选定数量，随后显示上新；图片无法加载的商品会自动隐藏</span></div></div>
-            <div className="item-filters" role="tablist" aria-label="商品关键词分类"><button className={itemFilter === 'all' ? 'active' : ''} onClick={() => setItemFilter('all')}>全部 <span>{snapshot.recentItems.length}</span></button>{snapshot.subscriptions.map((subscription) => <button key={subscription.id} className={itemFilter === subscription.id ? 'active' : ''} onClick={() => setItemFilter(subscription.id)}>{subscription.keyword} <span>{snapshot.recentItems.filter((item) => item.subscriptionId === subscription.id).length}</span></button>)}</div>
+            <div className="item-filters" role="tablist" aria-label="商品关键词分类"><button className={itemFilter === 'all' ? 'active' : ''} onClick={() => setItemFilter('all')}>全部 <span>{snapshot.globalRecentItems.length}</span></button>{snapshot.subscriptions.map((subscription) => <button key={subscription.id} className={itemFilter === subscription.id ? 'active' : ''} onClick={() => setItemFilter(subscription.id)}>{subscription.keyword} <span>{snapshot.recentItems.filter((item) => item.subscriptionId === subscription.id).length}</span></button>)}</div>
             <div className="item-grid">
               {filteredItems.map((item) => <ItemCard key={`${item.subscriptionId}-${item.id}`} item={item} favorite={snapshot.favorites.some((favorite) => favorite.id === item.id)} onFavorite={(value) => void action(window.mercariPulse.addFavorite(value))} onDelete={(value) => {
                 if (confirm(`确认从商品动态中删除“${value.name}”吗？`)) {

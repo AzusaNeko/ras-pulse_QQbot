@@ -517,7 +517,7 @@ describe('MonitorEngine baseline', () => {
     engine.stop()
   })
 
-  it('retains up to 200 records per keyword and preserves a keyword\'s final record during global cleanup', async () => {
+  it('retains up to 200 records per keyword while capping only the aggregate feed', async () => {
     const store = new MemoryStore()
     const records = (subscriptionId: string, count: number): MercariItem[] => Array.from({ length: count }, (_, index) => ({
       ...item(`${subscriptionId}-${index}`), subscriptionId, keyword: subscriptionId
@@ -526,10 +526,12 @@ describe('MonitorEngine baseline', () => {
     const engine = new MonitorEngine(new FakeSource(), store)
     await engine.start()
 
-    const recent = engine.snapshot().recentItems
-    expect(recent).toHaveLength(300)
+    const snapshot = engine.snapshot()
+    const recent = snapshot.recentItems
+    expect(recent).toHaveLength(301)
+    expect(snapshot.globalRecentItems).toHaveLength(300)
     expect(recent.filter((value) => value.subscriptionId === 'keyword-a')).toHaveLength(200)
-    expect(recent.filter((value) => value.subscriptionId === 'keyword-b')).toHaveLength(99)
+    expect(recent.filter((value) => value.subscriptionId === 'keyword-b')).toHaveLength(100)
     expect(recent.filter((value) => value.subscriptionId === 'keyword-c')).toHaveLength(1)
     engine.stop()
   })

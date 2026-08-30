@@ -12,8 +12,8 @@ const ULTRA_FAST_INTERVAL_MS = 100
 const FAST_INTERVAL_MS = 500
 /** At most this many activity records are retained for one monitored keyword. */
 const MAX_RECENT_ITEMS_PER_KEYWORD = 200
-/** Absolute cap across all monitored keywords. */
-const MAX_RECENT_ITEMS = 300
+/** Display-only cap for the aggregate “全部” activity feed. */
+const MAX_GLOBAL_RECENT_ITEMS = 300
 const MAX_SEEN_IDS = 500
 const STALLED_CHECK_GRACE_MS = 15_000
 /** Allows for Mercari/index clock skew without treating old search results as new. */
@@ -93,6 +93,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     return {
       subscriptions: structuredClone(this.state.subscriptions),
       recentItems: structuredClone(this.state.recentItems),
+      globalRecentItems: structuredClone(this.state.recentItems.slice(0, MAX_GLOBAL_RECENT_ITEMS)),
       favorites: structuredClone(this.state.favorites),
       logs: structuredClone(this.state.logs),
       settings: structuredClone(this.state.settings),
@@ -500,12 +501,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     } finally { this.favoritesRunning = false }
   }
 
-  /**
-   * Keeps the newest records first. Per-keyword trimming happens before the
-   * global cap. Global cleanup reclaims the oldest item from a keyword that
-   * still has another record, preserving a keyword's final record whenever
-   * the 300-item cap permits it.
-   */
+  /** Keeps newest records first and caps each keyword independently. */
   private retainRecentItems(items: MercariItem[]): MercariItem[] {
     const perKeyword = new Map<string, number>()
     const retained = items.filter((item) => {
@@ -514,21 +510,6 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       perKeyword.set(item.subscriptionId, count + 1)
       return true
     })
-    const counts = new Map(perKeyword)
-    while (retained.length > MAX_RECENT_ITEMS) {
-      let removeIndex = -1
-      for (let index = retained.length - 1; index >= 0; index -= 1) {
-        if ((counts.get(retained[index].subscriptionId) ?? 0) > 1) {
-          removeIndex = index
-          break
-        }
-      }
-      // If more than 300 keywords only have one item each, the absolute cap
-      // requires reclaiming the globally oldest item as a final fallback.
-      if (removeIndex < 0) removeIndex = retained.length - 1
-      const [removed] = retained.splice(removeIndex, 1)
-      counts.set(removed.subscriptionId, (counts.get(removed.subscriptionId) ?? 1) - 1)
-    }
     return retained
   }
 

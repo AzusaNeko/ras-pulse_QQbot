@@ -297,7 +297,7 @@ function registerIpc(): void {
   ipcMain.handle('monitor:check-all-now', () => engine.checkAllNow())
   ipcMain.handle('notifications:test', async () => {
     const snapshot = engine.snapshot()
-    const latestItem = snapshot.recentItems[0]
+    const latestItem = snapshot.globalRecentItems[0]
     if (latestItem) {
       return { supported: await showProductNotification(latestItem, snapshot.settings, true) }
     }
@@ -342,7 +342,7 @@ function registerIpc(): void {
     const snapshot = engine.snapshot()
     const bot = snapshot.settings.qqBots.find((entry) => entry.id === botId)
     if (!bot) throw new Error('未找到 QQ 机器人配置')
-    return getQQNotifier(bot.id).sendTest(bot, snapshot.recentItems[0])
+    return getQQNotifier(bot.id).sendTest(bot, snapshot.globalRecentItems[0])
   })
   ipcMain.handle('qqbot:sync-command-panels', async (_event, botId: string) => {
     const settings = engine.snapshot().settings
