@@ -114,7 +114,7 @@ describe('MonitorEngine baseline', () => {
     engine.stop()
   })
 
-  it('can manually rebuild initial result cards without replaying notifications', async () => {
+  it('can append manually synced initial cards without replaying notifications', async () => {
     const source = new FakeSource()
     source.items = [item('before-resync')]
     const engine = new MonitorEngine(source, new MemoryStore())
@@ -127,8 +127,7 @@ describe('MonitorEngine baseline', () => {
 
     source.items = [item('after-resync')]
     await engine.resyncInitialResults(id)
-    expect(engine.snapshot().recentItems).toMatchObject([{ id: 'after-resync', discoveryType: 'baseline' }])
-    expect(engine.snapshot().recentItems.some((value) => value.id === 'before-resync')).toBe(false)
+    expect(engine.snapshot().recentItems).toMatchObject([{ id: 'after-resync', discoveryType: 'baseline' }, { id: 'before-resync', discoveryType: 'baseline' }])
     expect(notified).toHaveLength(0)
     engine.stop()
   })

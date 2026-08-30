@@ -23,20 +23,25 @@ function logTime(timestamp: number): string {
   return new Date(timestamp).toLocaleString('zh-CN', { hour12: false })
 }
 
-function listingTime(item: MercariItem): string {
-  if (item.discoveryType === 'updated' && item.updatedAt) {
-    const timestamp = item.updatedAt > 10_000_000_000 ? item.updatedAt : item.updatedAt * 1_000
-    return `更新 ${timeAgo(timestamp)}`
+function mercariTimestamp(value?: number): number | undefined {
+  if (!value) return undefined
+  return value > 10_000_000_000 ? value : value * 1_000
+}
+
+function listingTimes(item: MercariItem): { search: string; original: string } {
+  const rankedAt = mercariTimestamp(item.updatedAt)
+  const createdAt = mercariTimestamp(item.createdAt)
+  return {
+    search: rankedAt ? `搜索排序参考：${timeAgo(rankedAt)}` : '搜索排序：Mercari 新しい順',
+    original: createdAt ? `原始上架：${timeAgo(createdAt)}` : `检测：${timeAgo(item.detectedAt)}`
   }
-  if (!item.createdAt) return `检测 ${timeAgo(item.detectedAt)}`
-  const timestamp = item.createdAt > 10_000_000_000 ? item.createdAt : item.createdAt * 1_000
-  return `上架 ${timeAgo(timestamp)}`
 }
 
 function ItemCard({ item, favorite, onFavorite, onDelete }: { item: MercariItem; favorite: boolean; onFavorite: (item: MercariItem) => void; onDelete: (item: MercariItem) => void }): JSX.Element | null {
   const openItem = (): void => { void window.mercariPulse.openExternal(item.url) }
   const [imageStatus, setImageStatus] = useState<'loading' | 'ready' | 'failed'>('loading')
   const sold = isSoldMercariStatus(item.status)
+  const times = listingTimes(item)
   if (!item.thumbnail || imageStatus === 'failed') return null
   return (
     <article className={`item-card ${item.isAuction === true ? 'auction-item' : ''} ${imageStatus === 'ready' ? '' : 'item-card-loading'}`} role="button" tabIndex={imageStatus === 'ready' ? 0 : -1} aria-hidden={imageStatus !== 'ready'} onClick={imageStatus === 'ready' ? openItem : undefined} onKeyDown={(event) => { if (imageStatus === 'ready' && event.key === 'Enter') openItem() }}>
@@ -48,7 +53,7 @@ function ItemCard({ item, favorite, onFavorite, onDelete }: { item: MercariItem;
         <img src={item.thumbnail} alt="" onLoad={() => setImageStatus('ready')} onError={() => setImageStatus('failed')} />
       </div>
       <div className="item-copy">
-        <div className="item-topline"><span className={`keyword-pill ${item.discoveryType === 'updated' ? 'updated' : item.discoveryType === 'offline' ? 'offline' : ''}`}>{item.keyword} · {item.discoveryType === 'baseline' ? '初始结果' : item.discoveryType === 'updated' ? '旧商品更新' : item.discoveryType === 'offline' ? '离线期间上新' : '上新'}</span><time>{listingTime(item)}</time></div>
+        <div className="item-topline"><span className={`keyword-pill ${item.discoveryType === 'updated' ? 'updated' : item.discoveryType === 'offline' ? 'offline' : ''}`}>{item.keyword} · {item.discoveryType === 'baseline' ? '初始结果' : item.discoveryType === 'updated' ? '旧商品更新' : item.discoveryType === 'offline' ? '离线期间上新' : '上新'}</span><span className="item-times"><time title="Mercari 搜索结果使用的排序参考时间；卖家编辑旧商品时可能变新。">{times.search}</time><time>{times.original}</time></span></div>
         <strong>{item.name}</strong>
         {item.discoveryType === 'updated' && <small className="item-update-summary">更新：{item.updateSummary ?? '卖家编辑了商品信息'}</small>}
         <div className="item-bottom"><div><b>{price(item.price)}</b><i className={`sale-type ${item.isAuction === true ? 'auction' : ''}`}>{item.isAuction === true ? '拍卖商品' : item.isAuction === false ? '直售商品' : '煤炉直售类'}</i>{sold && <i className="listing-status sold">已售</i>}</div><span>打开商品 ↗</span></div>
@@ -150,7 +155,7 @@ function SubscriptionCard({ item, qqTargets, ultraFastAtCapacity, fastAtCapacity
       <div className="card-actions">
         <button className={`details-toggle ${detailsExpanded ? 'expanded' : ''}`} title={detailsExpanded ? '收起详细信息' : '展开详细信息'} aria-expanded={detailsExpanded} onClick={() => setDetailsExpanded((value) => !value)}><span>{detailsExpanded ? '收起' : '详情'}</span><i>{detailsExpanded ? '⌃' : '⌄'}</i></button>
         <button className="icon-button" title="添加屏蔽词" onClick={() => { setDetailsExpanded(true); setAddingExclusions(true) }}>⊘</button>
-        <button className="icon-button" title="重新同步初始结果（不发送通知）" onClick={() => void onResync(item.id)}>⌁</button>
+        <button className="icon-button" title="追加同步最新初始结果（不发送通知）" onClick={() => void onResync(item.id)}>⌁</button>
         <button className="icon-button" title="立即检查" onClick={() => onCheck(item.id)}>↻</button>
         <label className="switch" title={item.enabled ? '暂停' : '启用'}>
           <input type="checkbox" checked={item.enabled} onChange={(event) => onChange(item.id, { enabled: event.target.checked, status: event.target.checked ? 'watching' : 'paused' })} />

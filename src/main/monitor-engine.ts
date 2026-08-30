@@ -253,14 +253,13 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     await this.check(id, true)
   }
 
-  /** Rebuilds a keyword's first-display cards without replaying any notifications. */
+  /** Appends a keyword's newest initial cards without replaying any notifications. */
   async resyncInitialResults(id: string): Promise<AppSnapshot> {
     const subscription = this.requireSubscription(id)
     this.state.baselineReadyBySubscription[id] = false
     this.baselineEmptyAttempts.delete(id)
     this.baselineRetryAt.delete(id)
-    this.state.recentItems = this.state.recentItems.filter((item) => !(item.subscriptionId === id && item.discoveryType === 'baseline'))
-    this.recordLog('info', `开始重新同步初始结果：${subscription.keyword}。`)
+    this.recordLog('info', `开始追加同步初始结果：${subscription.keyword}。`)
     await this.persistAndEmit()
     await this.check(id, true)
     return this.snapshot()
@@ -580,15 +579,16 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       this.recordLog('info', `初始同步等待重试：${subscription.keyword} 的商品图片暂不可用。`)
       return
     }
-    const baselineIds = new Set(baselineItems.map((item) => item.id))
+    const existingIds = new Set(this.state.recentItems.filter((item) => item.subscriptionId === subscription.id).map((item) => item.id))
+    const appendedItems = baselineItems.filter((item) => !existingIds.has(item.id))
     this.state.recentItems = this.retainRecentItems([
-      ...baselineItems,
-      ...this.state.recentItems.filter((old) => !(old.subscriptionId === subscription.id && baselineIds.has(old.id)))
+      ...appendedItems,
+      ...this.state.recentItems
     ])
     this.state.baselineReadyBySubscription[id] = true
     this.baselineEmptyAttempts.delete(id)
     this.baselineRetryAt.delete(id)
-    this.recordLog('info', `已建立首次基线：${subscription.keyword}，搜索返回 ${items.length} 条，展示 ${baselineItems.length} 条初始商品。`)
+    this.recordLog('info', `已建立首次基线：${subscription.keyword}，搜索返回 ${items.length} 条，新增 ${appendedItems.length} 条初始商品。`)
   }
 
   private recordObservedUpdates(subscriptionId: string, items: MercariItem[], seenIds: string[]): void {
