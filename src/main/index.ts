@@ -226,10 +226,16 @@ function createWindow(): void {
 }
 
 function createTray(): void {
-  const icon = nativeImage.createFromDataURL(
-    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAK0lEQVR42mNgGAWjYBSMglEwCkbB////z2BgYGBg+M/AwMCATQfVQYHhPwMAx6sFHb8vQgcAAAAASUVORK5CYII='
-  )
-  tray = new Tray(icon)
+  // Keep the tray image self-contained so it is available both in development
+  // and after electron-builder packages the application. The previous
+  // transparent 16px bitmap could render as a blank square in Windows.
+  const traySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+    <rect x="2" y="2" width="28" height="28" rx="8" fill="#59E6A0"/>
+    <path d="M9 23V9h3.2l3.8 6.2L19.8 9H23v14h-3v-8.4l-3.1 5.1h-1.8L12 14.6V23H9z" fill="#062116"/>
+  </svg>`
+  const icon = nativeImage.createFromDataURL(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(traySvg)}`)
+  icon.setTemplateImage(false)
+  tray = new Tray(icon.resize({ width: 32, height: 32 }))
   tray.setToolTip('Mercari Pulse 正在后台监控')
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: '打开 Mercari Pulse', click: showWindow },
