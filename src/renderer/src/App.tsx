@@ -161,8 +161,8 @@ function SubscriptionCard({ item, qqTargets, ultraFastAtCapacity, fastAtCapacity
           <input type="checkbox" checked={item.enabled} onChange={(event) => onChange(item.id, { enabled: event.target.checked, status: event.target.checked ? 'watching' : 'paused' })} />
           <span />
         </label>
-        <button className="icon-button danger" title="删除" onClick={() => onDelete(item.id)}>×</button>
       </div>
+      <button className="subscription-delete" title="删除监控任务" aria-label={`删除“${item.keyword}”监控任务`} onClick={() => onDelete(item.id)}>×</button>
     </article>
   )
 }
