@@ -19,6 +19,8 @@ const STALLED_CHECK_GRACE_MS = 15_000
 /** Allows for Mercari/index clock skew without treating old search results as new. */
 const NEW_LISTING_CLOCK_SKEW_MS = 2 * 60_000
 const BASELINE_RETRY_DELAY_MS = 5_000
+const EMPTY_BASELINE_RETRY_DELAY_MS = 600
+const MAX_EMPTY_BASELINE_ATTEMPTS = 3
 const MAX_LOG_ENTRIES = 500
 /** Wait long enough for Mercari's rate-limit window to clear before retrying. */
 const ACCESS_BLOCK_COOLDOWN_MS = 15 * 60_000
@@ -44,6 +46,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
   private readonly baselineRetryAt = new Map<string, number>()
   /** Existing tasks silently absorb search results from the time the app was offline. */
   private readonly startupResyncPending = new Set<string>()
+  private readonly baselineEmptyAttempts = new Map<string, number>()
   private healthTimer: NodeJS.Timeout | undefined
   private favoriteTimer: NodeJS.Timeout | undefined
   private favoritesRunning = false
@@ -63,7 +66,9 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     }
     this.startedAt = Date.now()
     this.startupResyncPending.clear()
-    for (const subscription of this.state.subscriptions) this.startupResyncPending.add(subscription.id)
+    for (const subscription of this.state.subscriptions) {
+      if (this.state.baselineReadyBySubscription[subscription.id]) this.startupResyncPending.add(subscription.id)
+    }
     this.recordLog('info', `监控引擎已启动，已加载 ${this.state.subscriptions.length} 个关键词任务。`)
     await this.store.save(this.state)
     for (const subscription of this.state.subscriptions) this.schedule(subscription.id, 120)
@@ -91,6 +96,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       favorites: structuredClone(this.state.favorites),
       logs: structuredClone(this.state.logs),
       settings: structuredClone(this.state.settings),
+      initialSyncingSubscriptionIds: this.state.subscriptions.filter((subscription) => !this.state.baselineReadyBySubscription[subscription.id]).map((subscription) => subscription.id),
       startedAt: this.startedAt
     }
   }
@@ -188,6 +194,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     delete this.state.baselineReadyBySubscription[id]
     delete this.state.observedUpdatesBySubscription[id]
     this.baselineRetryAt.delete(id)
+    this.baselineEmptyAttempts.delete(id)
     this.startupResyncPending.delete(id)
     const timer = this.timers.get(id)
     if (timer) clearTimeout(timer)
@@ -243,6 +250,19 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
 
   async checkNow(id: string): Promise<void> {
     await this.check(id, true)
+  }
+
+  /** Rebuilds a keyword's first-display cards without replaying any notifications. */
+  async resyncInitialResults(id: string): Promise<AppSnapshot> {
+    const subscription = this.requireSubscription(id)
+    this.state.baselineReadyBySubscription[id] = false
+    this.baselineEmptyAttempts.delete(id)
+    this.baselineRetryAt.delete(id)
+    this.state.recentItems = this.state.recentItems.filter((item) => !(item.subscriptionId === id && item.discoveryType === 'baseline'))
+    this.recordLog('info', `开始重新同步初始结果：${subscription.keyword}。`)
+    await this.persistAndEmit()
+    await this.check(id, true)
+    return this.snapshot()
   }
 
   /** Refresh enabled tasks with small controlled concurrency to avoid a request burst. */
@@ -327,7 +347,15 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
           this.recordLog('info', `启动同步完成：${subscription.keyword}，已补充 ${offlineItems.length} 条离线期间上新（不发送通知）。`)
           return
         }
+        const wasWaitingForInitialBaseline = !this.state.baselineReadyBySubscription[id]
         await this.retryMissingBaseline(id, subscription, items, manual)
+        if (wasWaitingForInitialBaseline) {
+          // A delayed first result is still a baseline, never a new-item alert.
+          const nextSeen = [...new Set([...items.map((item) => item.id), ...seen])].slice(0, MAX_SEEN_IDS)
+          this.state.seenBySubscription[id] = nextSeen
+          this.recordObservedUpdates(id, items, nextSeen)
+          return
+        }
         const unseenItems = items.filter((candidate) => !seen.has(candidate.id))
         const previousUpdates = this.state.observedUpdatesBySubscription[id] ?? {}
         const editedItems = subscription.monitorUpdates
@@ -400,26 +428,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
         const nextSeen = [...new Set([...items.map((item) => item.id), ...seen])].slice(0, MAX_SEEN_IDS)
         this.state.seenBySubscription[id] = nextSeen
         this.recordObservedUpdates(id, items, nextSeen)
-        const baselineCandidates = this.selectBaselineItems(
-          items,
-          clampInitialDisplayCount(subscription.initialDisplayCount)
-        )
-        const baselineItems = (await this.withAccessibleImages(baselineCandidates))
-          // The detail endpoint can reveal that a listing sold between search
-          // and enrichment. Never surface that stale result in a new baseline.
-          .filter((item) => !isSoldMercariStatus(item.status))
-          .map((item) => ({ ...item, discoveryType: 'baseline' as const }))
-        const baselineIds = new Set(baselineItems.map((item) => item.id))
-        this.state.recentItems = this.retainRecentItems([
-          ...baselineItems,
-          ...this.state.recentItems.filter((old) => !(old.subscriptionId === subscription.id && baselineIds.has(old.id)))
-        ])
-        this.recordLog('info', `已建立首次基线：${subscription.keyword}，展示 ${baselineItems.length} 条在售商品。`)
-        // If thumbnail validation had a transient failure, all item IDs are
-        // still marked seen above. Keep a retry marker so the first display is
-        // eventually populated without falsely emitting an “up new” alert.
-        this.state.baselineReadyBySubscription[id] = baselineItems.length > 0 || baselineCandidates.length === 0
-        if (!this.state.baselineReadyBySubscription[id]) this.baselineRetryAt.set(id, Date.now() + BASELINE_RETRY_DELAY_MS)
+        await this.retryMissingBaseline(id, subscription, items, true)
       }
     } catch (error) {
       subscription.consecutiveErrors += 1
@@ -559,11 +568,6 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     return updatedAt >= subscription.createdAt - NEW_LISTING_CLOCK_SKEW_MS
   }
 
-  /**
-   * Sold listings are remembered in the seen baseline, but never shown after a
-   * keyword is added again. Showing fewer than the requested count is better
-   * than presenting an already-unavailable item as an initial result.
-   */
   private selectBaselineItems(items: MercariItem[], count: number): MercariItem[] {
     return items.filter((item) => !isSoldMercariStatus(item.status)).slice(0, count)
   }
@@ -574,7 +578,17 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
     if (!manual && Date.now() < nextRetry) return
     const candidates = this.selectBaselineItems(items, clampInitialDisplayCount(subscription.initialDisplayCount))
     if (!candidates.length) {
-      this.state.baselineReadyBySubscription[id] = true
+      const attempts = (this.baselineEmptyAttempts.get(id) ?? 0) + 1
+      this.baselineEmptyAttempts.set(id, attempts)
+      if (attempts >= MAX_EMPTY_BASELINE_ATTEMPTS) {
+        this.state.baselineReadyBySubscription[id] = true
+        this.baselineEmptyAttempts.delete(id)
+        this.baselineRetryAt.delete(id)
+        this.recordLog('info', `初始同步结束：${subscription.keyword} 连续 ${attempts} 次未返回商品。`)
+      } else {
+        this.baselineRetryAt.set(id, Date.now() + EMPTY_BASELINE_RETRY_DELAY_MS)
+        this.recordLog('info', `初始同步等待重试：${subscription.keyword} 本次未返回商品（${attempts}/${MAX_EMPTY_BASELINE_ATTEMPTS}）。`)
+      }
       return
     }
     const baselineItems = (await this.withAccessibleImages(candidates))
@@ -582,6 +596,7 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       .map((item) => ({ ...item, discoveryType: 'baseline' as const }))
     if (!baselineItems.length) {
       this.baselineRetryAt.set(id, Date.now() + BASELINE_RETRY_DELAY_MS)
+      this.recordLog('info', `初始同步等待重试：${subscription.keyword} 的商品图片暂不可用。`)
       return
     }
     const baselineIds = new Set(baselineItems.map((item) => item.id))
@@ -590,7 +605,9 @@ export class MonitorEngine extends EventEmitter<EngineEvents> {
       ...this.state.recentItems.filter((old) => !(old.subscriptionId === subscription.id && baselineIds.has(old.id)))
     ])
     this.state.baselineReadyBySubscription[id] = true
+    this.baselineEmptyAttempts.delete(id)
     this.baselineRetryAt.delete(id)
+    this.recordLog('info', `已建立首次基线：${subscription.keyword}，搜索返回 ${items.length} 条，展示 ${baselineItems.length} 条初始商品。`)
   }
 
   private recordObservedUpdates(subscriptionId: string, items: MercariItem[], seenIds: string[]): void {

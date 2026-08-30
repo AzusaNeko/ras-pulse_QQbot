@@ -293,6 +293,7 @@ function registerIpc(): void {
   })
   ipcMain.handle('favorites:remove', (_event, itemId: string) => engine.removeFavorite(itemId))
   ipcMain.handle('monitor:check-now', (_event, id: string) => engine.checkNow(id))
+  ipcMain.handle('monitor:resync-initial', (_event, id: string) => engine.resyncInitialResults(id))
   ipcMain.handle('monitor:check-all-now', () => engine.checkAllNow())
   ipcMain.handle('notifications:test', async () => {
     const snapshot = engine.snapshot()

@@ -158,6 +158,8 @@ export interface AppSnapshot {
   favorites: FavoriteItem[]
   logs: LogEntry[]
   settings: AppSettings
+  /** Keyword IDs still collecting their first displayable search baseline. */
+  initialSyncingSubscriptionIds: string[]
   startedAt: number
 }
 
@@ -198,6 +200,7 @@ export interface MercariPulseApi {
   removeFavorite(itemId: string): Promise<AppSnapshot>
   updateSettings(patch: Partial<AppSettings>): Promise<AppSnapshot>
   checkNow(id: string): Promise<void>
+  resyncInitialResults(id: string): Promise<AppSnapshot>
   checkAllNow(): Promise<{ requested: number; skipped: number }>
   testNotification(): Promise<{ supported: boolean }>
   getQQBotConfig(): Promise<QQBotConfig>

@@ -93,11 +93,12 @@ function BulkSubscriptionManager({ count, onApply, onRefresh }: { count: number;
   </div>
 }
 
-function SubscriptionCard({ item, qqTargets, ultraFastAtCapacity, fastAtCapacity, dragging, dropTarget, onDragStart, onDragEnter, onDragEnd, onDrop, onChange, onDelete, onCheck }: {
+function SubscriptionCard({ item, qqTargets, ultraFastAtCapacity, fastAtCapacity, initialSyncing, dragging, dropTarget, onDragStart, onDragEnter, onDragEnd, onDrop, onChange, onResync, onDelete, onCheck }: {
   item: Subscription
   qqTargets: QQBotTarget[]
   ultraFastAtCapacity: boolean
   fastAtCapacity: boolean
+  initialSyncing: boolean
   dragging: boolean
   dropTarget: boolean
   onDragStart: (id: string) => void
@@ -105,6 +106,7 @@ function SubscriptionCard({ item, qqTargets, ultraFastAtCapacity, fastAtCapacity
   onDragEnd: () => void
   onDrop: (id: string) => void
   onChange: (id: string, patch: Partial<Subscription>) => void
+  onResync: (id: string) => void | Promise<void>
   onDelete: (id: string) => void
   onCheck: (id: string) => void
 }): JSX.Element {
@@ -127,8 +129,8 @@ function SubscriptionCard({ item, qqTargets, ultraFastAtCapacity, fastAtCapacity
         <button className="drag-handle" type="button" draggable title="拖动调整任务排序" aria-label={`拖动调整“${item.keyword}”的排序`} onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', item.id); const card = event.currentTarget.closest<HTMLElement>('.subscription-card'); if (card) event.dataTransfer.setDragImage(card, Math.min(card.clientWidth / 2, 180), Math.min(card.clientHeight / 2, 42)); onDragStart(item.id) }} onDragEnd={onDragEnd}>⠿</button>
         <div className="status-orbit"><span /></div>
         <div className="subscription-copy">
-          <div className="subscription-title"><h3>{item.keyword}</h3><span className="status-label">{item.cooldownUntil && item.cooldownUntil > Date.now() ? '冷却中' : statusLabels[item.status]}</span></div>
-          <small title={item.error}>{item.error ? item.error : `上次成功：${timeAgo(item.lastSuccessAt)}`}</small>
+          <div className="subscription-title"><h3>{item.keyword}</h3><span className={`status-label ${initialSyncing ? 'initial-sync' : ''}`}>{initialSyncing ? '初始同步中' : item.cooldownUntil && item.cooldownUntil > Date.now() ? '冷却中' : statusLabels[item.status]}</span></div>
+          <small title={item.error}>{item.error ? item.error : initialSyncing ? '正在确认首次展示商品，期间不会发送通知' : `上次成功：${timeAgo(item.lastSuccessAt)}`}</small>
           {detailsExpanded && <div className="subscription-details">
             <p>
               {item.excludeKeyword && `排除：${item.excludeKeyword} · `}
@@ -148,6 +150,7 @@ function SubscriptionCard({ item, qqTargets, ultraFastAtCapacity, fastAtCapacity
       <div className="card-actions">
         <button className={`details-toggle ${detailsExpanded ? 'expanded' : ''}`} title={detailsExpanded ? '收起详细信息' : '展开详细信息'} aria-expanded={detailsExpanded} onClick={() => setDetailsExpanded((value) => !value)}><span>{detailsExpanded ? '收起' : '详情'}</span><i>{detailsExpanded ? '⌃' : '⌄'}</i></button>
         <button className="icon-button" title="添加屏蔽词" onClick={() => { setDetailsExpanded(true); setAddingExclusions(true) }}>⊘</button>
+        <button className="icon-button" title="重新同步初始结果（不发送通知）" onClick={() => void onResync(item.id)}>⌁</button>
         <button className="icon-button" title="立即检查" onClick={() => onCheck(item.id)}>↻</button>
         <label className="switch" title={item.enabled ? '暂停' : '启用'}>
           <input type="checkbox" checked={item.enabled} onChange={(event) => onChange(item.id, { enabled: event.target.checked, status: event.target.checked ? 'watching' : 'paused' })} />
@@ -461,11 +464,12 @@ export function App(): JSX.Element {
               } catch (error) { setNotice(error instanceof Error ? error.message : String(error)) }
             }} />
             <div className="subscription-grid" style={{ maxHeight: `${snapshot.settings.subscriptionVisibleCount * 122}px` }}>
-              {snapshot.subscriptions.map((item) => <SubscriptionCard key={item.id} item={item} qqTargets={snapshot.settings.qqBots.flatMap((bot) => bot.targets)} dragging={draggingSubscriptionId === item.id} dropTarget={dragOverSubscriptionId === item.id && draggingSubscriptionId !== item.id}
+              {snapshot.subscriptions.map((item) => <SubscriptionCard key={item.id} item={item} qqTargets={snapshot.settings.qqBots.flatMap((bot) => bot.targets)} initialSyncing={snapshot.initialSyncingSubscriptionIds.includes(item.id)} dragging={draggingSubscriptionId === item.id} dropTarget={dragOverSubscriptionId === item.id && draggingSubscriptionId !== item.id}
                 onDragStart={(id) => { setDraggingSubscriptionId(id); setDragOverSubscriptionId(undefined) }} onDragEnter={setDragOverSubscriptionId} onDragEnd={() => { setDraggingSubscriptionId(undefined); setDragOverSubscriptionId(undefined) }} onDrop={(targetId) => { const sourceId = draggingSubscriptionId; setDraggingSubscriptionId(undefined); setDragOverSubscriptionId(undefined); if (sourceId) void reorderSubscription(sourceId, targetId) }}
                 ultraFastAtCapacity={snapshot.subscriptions.filter((other) => other.id !== item.id && other.enabled && other.intervalMs <= 100).length >= snapshot.settings.maxUltraFastSubscriptions}
                 fastAtCapacity={snapshot.subscriptions.filter((other) => other.id !== item.id && other.enabled && other.intervalMs > 100 && other.intervalMs <= 500).length >= snapshot.settings.maxFastSubscriptions}
                 onChange={(id, patch) => void action(window.mercariPulse.updateSubscription(id, patch))}
+                onResync={async (id) => { if (await action(window.mercariPulse.resyncInitialResults(id))) setNotice('正在重新同步该关键词的初始结果') }}
                 onCheck={(id) => void action(window.mercariPulse.checkNow(id))}
                 onDelete={(id) => {
                   const subscription = snapshot.subscriptions.find((value) => value.id === id)

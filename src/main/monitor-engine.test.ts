@@ -93,6 +93,46 @@ describe('MonitorEngine baseline', () => {
     engine.stop()
   })
 
+  it('keeps an empty first baseline pending and treats later results as initial cards', async () => {
+    const source = new FakeSource()
+    const engine = new MonitorEngine(source, new MemoryStore())
+    const notified: MercariItem[] = []
+    await engine.start()
+    engine.on('newItem', (value) => notified.push(value))
+    const snapshot = await engine.add({ keyword: '延迟首屏', initialDisplayCount: 2 })
+    const id = snapshot.subscriptions[0].id
+
+    await engine.checkNow(id)
+    expect(engine.snapshot().initialSyncingSubscriptionIds).toContain(id)
+    expect(engine.snapshot().recentItems).toHaveLength(0)
+
+    source.items = [item('arrived-later')]
+    await engine.checkNow(id)
+    expect(engine.snapshot().initialSyncingSubscriptionIds).not.toContain(id)
+    expect(engine.snapshot().recentItems).toMatchObject([{ id: 'arrived-later', discoveryType: 'baseline' }])
+    expect(notified).toHaveLength(0)
+    engine.stop()
+  })
+
+  it('can manually rebuild initial result cards without replaying notifications', async () => {
+    const source = new FakeSource()
+    source.items = [item('before-resync')]
+    const engine = new MonitorEngine(source, new MemoryStore())
+    const notified: MercariItem[] = []
+    await engine.start()
+    engine.on('newItem', (value) => notified.push(value))
+    const snapshot = await engine.add({ keyword: '重新同步', initialDisplayCount: 1 })
+    const id = snapshot.subscriptions[0].id
+    await engine.checkNow(id)
+
+    source.items = [item('after-resync')]
+    await engine.resyncInitialResults(id)
+    expect(engine.snapshot().recentItems).toMatchObject([{ id: 'after-resync', discoveryType: 'baseline' }])
+    expect(engine.snapshot().recentItems.some((value) => value.id === 'before-resync')).toBe(false)
+    expect(notified).toHaveLength(0)
+    engine.stop()
+  })
+
   it('adds listings accumulated while offline to activity without emitting notifications', async () => {
     const source = new FakeSource()
     const store = new MemoryStore()

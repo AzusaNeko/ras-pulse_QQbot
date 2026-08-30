@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('mercariPulse', {
   removeFavorite: (itemId: string) => ipcRenderer.invoke('favorites:remove', itemId),
   updateSettings: (patch: Partial<AppSettings>) => ipcRenderer.invoke('settings:update', patch),
   checkNow: (id: string) => ipcRenderer.invoke('monitor:check-now', id),
+  resyncInitialResults: (id: string) => ipcRenderer.invoke('monitor:resync-initial', id),
   checkAllNow: () => ipcRenderer.invoke('monitor:check-all-now'),
   testNotification: () => ipcRenderer.invoke('notifications:test'),
   getQQBotConfig: () => ipcRenderer.invoke('qqbot:get-config'),
