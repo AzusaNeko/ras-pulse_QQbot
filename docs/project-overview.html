@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mercari Pulse · 项目功能介绍</title>
+  <style>
+    :root { color-scheme: dark; --bg:#07100d; --panel:#0d1d16; --panel-2:#10261c; --line:#264936; --text:#ebf7ef; --muted:#8ca99a; --accent:#63efa8; --warn:#ffc469; --rose:#ff9ab7; }
+    * { box-sizing:border-box; } body { margin:0; font:15px/1.65 system-ui,"Noto Sans SC",sans-serif; color:var(--text); background:radial-gradient(circle at 78% 0,#16432e 0,transparent 31%),var(--bg); }
+    main { width:min(1180px,calc(100% - 40px)); margin:auto; padding:52px 0 76px; } .hero { padding:42px; border:1px solid var(--line); border-radius:24px; background:linear-gradient(135deg,#123121,#0b1712 72%); box-shadow:0 24px 70px #0006; }
+    .eyebrow { margin:0 0 8px; color:var(--accent); font:700 12px ui-monospace,Consolas,monospace; letter-spacing:.14em; } h1 { margin:0; font-size:clamp(32px,6vw,58px); letter-spacing:-.055em; } .hero p { max-width:720px; color:#b6d0c0; font-size:17px; } .chips { display:flex; flex-wrap:wrap; gap:8px; margin-top:24px; } .chip { padding:5px 10px; border:1px solid #3b7857; border-radius:999px; color:#bdf8d8; background:#133625; font-size:12px; }
+    section { margin-top:38px; } h2 { margin:0 0 14px; font-size:23px; } h3 { margin:0 0 6px; font-size:16px; } .intro { margin:0 0 18px; color:var(--muted); }.grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }.card { min-width:0; padding:20px; border:1px solid var(--line); border-radius:16px; background:linear-gradient(145deg,var(--panel),#0a1611); }.card p { margin:0; color:var(--muted); font-size:13px; }.icon { display:grid; place-items:center; width:36px; height:36px; margin-bottom:14px; border-radius:10px; color:#062114; background:var(--accent); font-weight:900; }
+    .flow { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; align-items:stretch; }.step { position:relative; padding:17px; border:1px solid var(--line); border-radius:14px; background:var(--panel); font-size:13px; }.step b { display:block; margin-bottom:5px; color:var(--accent); }.step span { color:var(--muted); }.step:not(:last-child)::after { content:"→"; position:absolute; right:-18px; top:50%; z-index:1; color:var(--accent); font-size:20px; transform:translateY(-50%); }
+    .list { display:grid; gap:9px; padding:0; margin:0; list-style:none; }.list li { padding:13px 15px; border-left:3px solid var(--accent); border-radius:0 10px 10px 0; background:var(--panel); color:#c6d8cd; }.list strong { color:var(--text); }.note { padding:19px 21px; border-left:3px solid var(--warn); border-radius:0 14px 14px 0; color:#e8cf9c; background:#292010; }.security { border-color:#69404d; }.security .icon { color:#2b1018; background:var(--rose); }
+    footer { margin-top:48px; color:#5f7d6d; font:12px ui-monospace,Consolas,monospace; text-align:center; } code { padding:2px 5px; border-radius:5px; background:#163424; color:#b9f6d3; }
+    @media (max-width:900px) { .grid { grid-template-columns:1fr 1fr; }.flow { grid-template-columns:1fr; }.step:not(:last-child)::after { content:"↓"; top:auto; right:50%; bottom:-21px; transform:translateX(50%); }.hero { padding:30px; } } @media (max-width:560px) { main { width:min(100% - 24px,1180px); padding-top:18px; }.grid { grid-template-columns:1fr; }.hero { padding:24px; border-radius:18px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="hero">
+      <p class="eyebrow">MERCARI PULSE · PROJECT OVERVIEW</p>
+      <h1>不错过每一次上新</h1>
+      <p>面向日本 Mercari 的低延迟桌面关键词监控工具。通过关键词监控、收藏跟踪、Windows 通知与 QQ 机器人订阅，把商品发现、筛选和提醒汇集到一个本地桌面应用中。</p>
+      <div class="chips"><span class="chip">Electron + React</span><span class="chip">100 ms 起轮询</span><span class="chip">Windows 通知</span><span class="chip">QQ 群 / 私聊</span><span class="chip">本地加密密钥</span></div>
+    </header>
+
+    <section>
+      <h2>核心功能</h2><p class="intro">每项功能围绕“尽快发现、准确过滤、按需通知、持续可追踪”设计。</p>
+      <div class="grid">
+        <article class="card"><div class="icon">⌕</div><h3>独立关键词监控</h3><p>每个关键词独立设置 0.1 / 0.5 / 1 / 2 / 5 / 10 秒间隔、价格区间、屏蔽词、初始展示数量和通知开关。</p></article>
+        <article class="card"><div class="icon">↻</div><h3>新商品与旧商品更新</h3><p>商品 ID 去重后识别真实上新；可选跟踪已存在商品的价格、状态、图片和名称编辑，并标注更新原因。</p></article>
+        <article class="card"><div class="icon">♥</div><h3>收藏状态追踪</h3><p>支持从动态或链接/ID 添加收藏；定期检查降价、涨价、售出状态和详情变化，售出后停止重复检查。</p></article>
+        <article class="card"><div class="icon">▣</div><h3>商品动态管理</h3><p>按关键词分类浏览，区分直售、拍卖、已售和离线期间上新；每关键词保留 200 条、全部视图保留 300 条。</p></article>
+        <article class="card"><div class="icon">Q</div><h3>QQ 精准订阅</h3><p>支持多个机器人、普通群与私聊。用户绑定后拥有独立关键词和屏蔽词，只接收自己订阅的商品。</p></article>
+        <article class="card security"><div class="icon">◆</div><h3>本地安全运行</h3><p>AppSecret 使用 Windows DPAPI 保存；渲染层隔离 Node.js，外部商品链接须验证后才会打开。</p></article>
+      </div>
+    </section>
+
+    <section>
+      <h2>发现与提醒流程</h2><p class="intro">首次添加只建立基线，后续才把新增结果作为上新通知；离线期间结果只补到动态，避免启动时打扰。</p>
+      <div class="flow"><div class="step"><b>1. 关键词调度</b><span>按各任务独立间隔发送搜索请求。</span></div><div class="step"><b>2. 结果过滤</b><span>价格、屏蔽词、图片可用性与商品类型校验。</span></div><div class="step"><b>3. 基线与去重</b><span>通过商品 ID 与已观察快照判断新商品或编辑。</span></div><div class="step"><b>4. 本地记录</b><span>写入商品动态、收藏状态和运行日志。</span></div><div class="step"><b>5. 按需投递</b><span>Windows 通知、QQ 文本及后台图片补发。</span></div></div>
+    </section>
+
+    <section>
+      <h2>QQ 机器人指令</h2><p class="intro">在私聊中直接发送，或在群聊中 @ 机器人后发送。未绑定时必须先绑定名称。</p>
+      <ul class="list"><li><strong><code>/bind 名称</code></strong>：绑定或修改当前私聊/群聊的显示名称。</li><li><strong><code>/add 关键词</code></strong>：订阅关键词；可追加 <code>exclude 屏蔽词</code>。</li><li><strong><code>/remove 关键词</code></strong>：移除当前会话订阅的关键词。</li><li><strong><code>/list</code> / <code>/clear confirm</code> / <code>/help</code>：查看、确认清空和获取帮助。</li></ul>
+    </section>
+
+    <section><div class="note"><strong>延迟说明：</strong>轮询间隔是应用发起相邻检查的目标时间，实际可见时间仍取决于 Mercari 搜索索引刷新、网络 RTT 和服务端限流。出现 401 / 403 / 429 或网络异常时，应用会自动退避并在冷却后恢复。</div></section>
+    <footer>Mercari Pulse · 本页为本地静态说明，可直接双击打开。</footer>
+  </main>
+</body>
+</html>
