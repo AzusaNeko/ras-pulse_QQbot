@@ -82,6 +82,8 @@ export interface AppSettings {
   notificationIncludeImage: boolean
   notificationIncludeName: boolean
   notificationIncludePrice: boolean
+  /** Register the application with Windows so monitoring can start at sign-in. */
+  launchAtStartup: boolean
   launchMinimized: boolean
   defaultIntervalMs: number
   /** Maximum enabled keyword tasks allowed to poll every 100 ms. */

@@ -175,6 +175,14 @@ function showWindow(): void {
   window?.focus()
 }
 
+function syncWindowsStartup(settings: Pick<AppSettings, 'launchAtStartup' | 'launchMinimized'>): void {
+  if (process.platform !== 'win32') return
+  app.setLoginItemSettings({
+    openAtLogin: settings.launchAtStartup,
+    openAsHidden: settings.launchMinimized
+  })
+}
+
 function createWindow(): void {
   window = new BrowserWindow({
     width: 1180,
@@ -352,7 +360,11 @@ function registerIpc(): void {
     await engine.updateSettings({ qqBots: settings.qqBots.map((entry) => entry.id === bot.id ? { ...entry, commandPanelIds: result.panelIds } : entry) })
     return result
   })
-  ipcMain.handle('settings:update', (_event, patch: Partial<AppSettings>) => engine.updateSettings(patch))
+  ipcMain.handle('settings:update', async (_event, patch: Partial<AppSettings>) => {
+    const snapshot = await engine.updateSettings(patch)
+    if (patch.launchAtStartup !== undefined || patch.launchMinimized !== undefined) syncWindowsStartup(snapshot.settings)
+    return snapshot
+  })
   ipcMain.handle('shell:open-external', async (_event, url: string) => {
     const parsed = new URL(url)
     if (parsed.protocol !== 'https:' || !['jp.mercari.com', 'www.mercari.com'].includes(parsed.hostname)) {
@@ -468,6 +480,7 @@ app.whenReady().then(async () => {
   mercariClient = new MercariClient((input, init) => net.fetch(input, init))
   engine = new MonitorEngine(mercariClient, new JsonStore(join(userData, 'state.json')))
   await engine.start()
+  syncWindowsStartup(engine.snapshot().settings)
   const storedBots = engine.snapshot().settings.qqBots
   const normalizedBots = storedBots.map((bot) => ({ ...bot, targets: deduplicateQQTargets(bot.targets) }))
   if (normalizedBots.some((bot, index) => bot.targets.length !== storedBots[index]?.targets.length)) {

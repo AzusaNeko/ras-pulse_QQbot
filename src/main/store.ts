@@ -40,6 +40,7 @@ export const defaultState: PersistedState = {
     notificationIncludeImage: false,
     notificationIncludeName: true,
     notificationIncludePrice: true,
+    launchAtStartup: false,
     launchMinimized: false,
     defaultIntervalMs: 1_000,
     maxUltraFastSubscriptions: 1,
