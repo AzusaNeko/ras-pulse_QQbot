@@ -194,6 +194,7 @@ export interface MercariPulseApi {
   removeSubscription(id: string, removeRelatedItems: boolean): Promise<AppSnapshot>
   dismissRecentItem(subscriptionId: string, itemId: string): Promise<AppSnapshot>
   addFavorite(item: MercariItem): Promise<AppSnapshot>
+  addFavoriteByReference(value: string): Promise<AppSnapshot>
   removeFavorite(itemId: string): Promise<AppSnapshot>
   updateSettings(patch: Partial<AppSettings>): Promise<AppSnapshot>
   checkNow(id: string): Promise<void>

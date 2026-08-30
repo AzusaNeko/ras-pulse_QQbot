@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('mercariPulse', {
   removeSubscription: (id: string, removeRelatedItems: boolean) => ipcRenderer.invoke('monitor:remove', id, removeRelatedItems),
   dismissRecentItem: (subscriptionId: string, itemId: string) => ipcRenderer.invoke('monitor:dismiss-item', subscriptionId, itemId),
   addFavorite: (item: MercariItem) => ipcRenderer.invoke('favorites:add', item),
+  addFavoriteByReference: (value: string) => ipcRenderer.invoke('favorites:add-by-reference', value),
   removeFavorite: (itemId: string) => ipcRenderer.invoke('favorites:remove', itemId),
   updateSettings: (patch: Partial<AppSettings>) => ipcRenderer.invoke('settings:update', patch),
   checkNow: (id: string) => ipcRenderer.invoke('monitor:check-now', id),

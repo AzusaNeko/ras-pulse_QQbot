@@ -170,4 +170,12 @@ describe('Mercari client', () => {
     expect(result).toMatchObject({ id: shopsItem.id, status: 'ITEM_STATUS_SOLD_OUT' })
     expect(fetchMock).toHaveBeenCalledWith(shopsItem.url, expect.objectContaining({ headers: expect.any(Object) }))
   })
+
+  it('reads enough Shops JSON-LD detail to add a product directly by URL', async () => {
+    const fetchMock = vi.fn(async () => new Response('<script type="application/ld+json">{"@type":"Product","name":"店铺商品","image":"https://assets.mercari-shops-static.com/product.webp","offers":{"price":"2800","availability":"https://schema.org/InStock"}}</script>', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const result = await new MercariClient().getItem({ ...shopsItem, name: '', price: 0, thumbnail: '' })
+
+    expect(result).toMatchObject({ name: '店铺商品', price: 2800, thumbnail: 'https://assets.mercari-shops-static.com/product.webp', status: 'ITEM_STATUS_ON_SALE' })
+  })
 })

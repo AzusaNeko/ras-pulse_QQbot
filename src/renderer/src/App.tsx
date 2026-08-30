@@ -159,6 +159,22 @@ function SubscriptionCard({ item, qqTargets, ultraFastAtCapacity, fastAtCapacity
   )
 }
 
+function AddFavoriteByReference({ onAdd }: { onAdd: (value: string) => Promise<boolean> }): JSX.Element {
+  const [value, setValue] = useState('')
+  const [busy, setBusy] = useState(false)
+  const submit = async (event: FormEvent): Promise<void> => {
+    event.preventDefault()
+    if (!value.trim()) return
+    setBusy(true)
+    try { if (await onAdd(value)) setValue('') } finally { setBusy(false) }
+  }
+  return <form className="favorite-reference-form" onSubmit={(event) => void submit(event)}>
+    <div><b>通过链接添加收藏</b><small>支持日本 Mercari 商品网址，或以 <code>m</code> 开头的商品 ID；添加前会验证商品是否有效。</small></div>
+    <input value={value} onChange={(event) => setValue(event.target.value)} placeholder="粘贴商品网址或 ID，例如 m12345678901" />
+    <button className="secondary-button" disabled={!value.trim() || busy}>{busy ? '验证中…' : '验证并收藏'}</button>
+  </form>
+}
+
 function FavoriteCard({ item, onRemove }: { item: FavoriteItem; onRemove: (id: string) => void }): JSX.Element {
   const sold = isSoldMercariStatus(item.status)
   const priceChange = item.previousPrice == null ? undefined : item.price - item.previousPrice
@@ -473,6 +489,7 @@ export function App(): JSX.Element {
         </> : page === 'favorites' ? <>
           <header><div><p className="eyebrow">MY FAVORITES</p><h1>我的收藏</h1><p>每 30 秒检查一次商品价格与在售状态</p></div><div className="live-chip"><i /> {snapshot.favorites.length} 件收藏</div></header>
           <section className="section-block favorites-page">
+            <AddFavoriteByReference onAdd={(value) => action(window.mercariPulse.addFavoriteByReference(value))} />
             <div className="item-filters" role="tablist" aria-label="收藏商品分类">
               <button className={favoriteFilter === 'all' ? 'active' : ''} onClick={() => setFavoriteFilter('all')}>全部 <span>{snapshot.favorites.length}</span></button>
               <button className={favoriteFilter === 'auction' ? 'active' : ''} onClick={() => setFavoriteFilter('auction')}>拍卖 <span>{snapshot.favorites.filter((item) => item.isAuction === true).length}</span></button>

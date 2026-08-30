@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { AppSettings, BulkSubscriptionPatch, FavoriteUpdate, MercariItem, NewSubscription, QQBotAccount, QQBotConfig, QQBotTarget, SaveQQBotConfigInput, Subscription } from '../shared/types'
 import { MercariClient } from './mercari-client'
-import { isSupportedMercariImageUrl } from './mercari-item-url'
+import { isSupportedMercariImageUrl, parseMercariItemReference } from './mercari-item-url'
 import { MonitorEngine } from './monitor-engine'
 import { JsonStore } from './store'
 import { QQBotNotifier } from './qq-bot-notifier'
@@ -15,6 +15,7 @@ let window: BrowserWindow | null = null
 let tray: Tray | null = null
 let quitting = false
 let engine: MonitorEngine
+let mercariClient: MercariClient
 let secretStore: SecretStore
 const qqNotifiers = new Map<string, QQBotNotifier>()
 // Legacy notifier is retained only while loading pre-v0.4.46 state; active robots use qqNotifiers.
@@ -273,6 +274,23 @@ function registerIpc(): void {
   })
   ipcMain.handle('monitor:dismiss-item', (_event, subscriptionId: string, itemId: string) => engine.dismissRecentItem(subscriptionId, itemId))
   ipcMain.handle('favorites:add', (_event, item: MercariItem) => engine.addFavorite(item))
+  ipcMain.handle('favorites:add-by-reference', async (_event, value: string) => {
+    const reference = parseMercariItemReference(value)
+    const item = await mercariClient.getItem({
+      id: reference.id,
+      name: '',
+      price: 0,
+      thumbnail: '',
+      url: reference.url,
+      status: 'ITEM_STATUS_UNSPECIFIED',
+      itemType: reference.itemType,
+      detectedAt: Date.now(),
+      subscriptionId: 'favorite',
+      keyword: '收藏'
+    })
+    if (!item?.name || !Number.isFinite(item.price)) throw new Error('未找到该商品：链接可能已失效、商品不存在，或不是 Mercari 商品。')
+    return engine.addFavorite(item)
+  })
   ipcMain.handle('favorites:remove', (_event, itemId: string) => engine.removeFavorite(itemId))
   ipcMain.handle('monitor:check-now', (_event, id: string) => engine.checkNow(id))
   ipcMain.handle('monitor:check-all-now', () => engine.checkAllNow())
@@ -446,7 +464,7 @@ app.whenReady().then(async () => {
   if (!hasSingleInstanceLock) return
   const userData = app.getPath('userData')
   secretStore = new SecretStore(join(userData, 'qqbot-secret.dat'))
-  const mercariClient = new MercariClient((input, init) => net.fetch(input, init))
+  mercariClient = new MercariClient((input, init) => net.fetch(input, init))
   engine = new MonitorEngine(mercariClient, new JsonStore(join(userData, 'state.json')))
   await engine.start()
   const storedBots = engine.snapshot().settings.qqBots

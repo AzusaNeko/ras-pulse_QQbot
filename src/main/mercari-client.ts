@@ -27,6 +27,33 @@ interface SearchResponse {
   items?: ApiItem[]
 }
 
+interface JsonLdProduct {
+  '@type'?: string | string[]
+  name?: string
+  image?: string | string[]
+  offers?: { price?: number | string } | Array<{ price?: number | string }>
+}
+
+function findProductJsonLd(page: string): JsonLdProduct | undefined {
+  const candidates: unknown[] = []
+  for (const match of page.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    try { candidates.push(JSON.parse(match[1])) } catch { /* Ignore unrelated malformed JSON-LD. */ }
+  }
+  const visit = (value: unknown): JsonLdProduct | undefined => {
+    if (Array.isArray(value)) {
+      for (const entry of value) { const product = visit(entry); if (product) return product }
+      return undefined
+    }
+    if (!value || typeof value !== 'object') return undefined
+    const candidate = value as JsonLdProduct & { '@graph'?: unknown[] }
+    const types = Array.isArray(candidate['@type']) ? candidate['@type'] : [candidate['@type']]
+    if (types.some((type) => type?.toLowerCase() === 'product') && candidate.name) return candidate
+    return candidate['@graph'] ? visit(candidate['@graph']) : undefined
+  }
+  for (const candidate of candidates) { const product = visit(candidate); if (product) return product }
+  return undefined
+}
+
 export interface ItemSource {
   search(subscription: Subscription, options?: ItemSearchOptions): Promise<MercariItem[]>
 }
@@ -235,7 +262,7 @@ export class MercariClient implements ItemSource {
   }
 
   /** Shops listings do not support the ordinary item-detail endpoint. */
-  private async getShopsItem(item: MercariItem): Promise<MercariItem> {
+  private async getShopsItem(item: MercariItem): Promise<MercariItem | undefined> {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs)
     try {
@@ -256,7 +283,19 @@ export class MercariClient implements ItemSource {
         : availability?.toLowerCase() === 'instock'
           ? 'ITEM_STATUS_ON_SALE'
           : item.status
-      return { ...item, status, detectedAt: Date.now() }
+      const product = findProductJsonLd(normalizedPage)
+      const offer = Array.isArray(product?.offers) ? product.offers[0] : product?.offers
+      const parsedPrice = Number(offer?.price)
+      const image = Array.isArray(product?.image) ? product.image[0] : product?.image
+      if (!item.name && (!product?.name || !Number.isFinite(parsedPrice))) return undefined
+      return {
+        ...item,
+        name: product?.name ?? item.name,
+        price: Number.isFinite(parsedPrice) ? parsedPrice : item.price,
+        thumbnail: image ?? item.thumbnail,
+        status,
+        detectedAt: Date.now()
+      }
     } finally {
       clearTimeout(timeout)
     }
