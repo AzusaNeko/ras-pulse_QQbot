@@ -2,9 +2,14 @@ import { safeStorage } from 'electron'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
-/** Stores QQ AppSecrets outside application settings, encrypted with Windows DPAPI. */
+/** Stores application secrets outside normal settings, encrypted with Windows DPAPI. */
 export class SecretStore {
-  constructor(private readonly filePath: string) {}
+  private writeQueue: Promise<void> = Promise.resolve()
+
+  constructor(
+    private readonly filePath: string,
+    private readonly secretLabel = 'QQ 密钥'
+  ) {}
 
   async has(botId = 'legacy-default'): Promise<boolean> {
     return Boolean((await this.readEncrypted())[botId])
@@ -13,22 +18,35 @@ export class SecretStore {
   async get(botId = 'legacy-default'): Promise<string | undefined> {
     const encrypted = (await this.readEncrypted())[botId]
     if (!encrypted) return undefined
-    if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows 安全存储不可用，无法读取 QQ 密钥')
+    if (!safeStorage.isEncryptionAvailable()) throw new Error(`Windows 安全存储不可用，无法读取${this.secretLabel}`)
     try {
       return safeStorage.decryptString(Buffer.from(encrypted, 'base64'))
     } catch {
-      throw new Error('无法解密 QQ 密钥，请在设置中重新保存')
+      throw new Error(`无法解密${this.secretLabel}，请在设置中重新保存`)
     }
   }
 
   async set(botId: string, value: string): Promise<void> {
-    if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows 安全存储不可用，无法保存 QQ 密钥')
-    await mkdir(dirname(this.filePath), { recursive: true })
-    const temporary = `${this.filePath}.tmp`
-    const entries = await this.readEncrypted()
-    entries[botId] = safeStorage.encryptString(value).toString('base64')
-    await writeFile(temporary, JSON.stringify(entries), 'utf8')
-    await rename(temporary, this.filePath)
+    if (!safeStorage.isEncryptionAvailable()) throw new Error(`Windows 安全存储不可用，无法保存${this.secretLabel}`)
+    const encrypted = safeStorage.encryptString(value).toString('base64')
+    await this.mutate((entries) => { entries[botId] = encrypted })
+  }
+
+  async delete(secretId: string): Promise<void> {
+    await this.mutate((entries) => { delete entries[secretId] })
+  }
+
+  private async mutate(update: (entries: Record<string, string>) => void): Promise<void> {
+    const write = this.writeQueue.then(async () => {
+      await mkdir(dirname(this.filePath), { recursive: true })
+      const entries = await this.readEncrypted()
+      update(entries)
+      const temporary = `${this.filePath}.tmp`
+      await writeFile(temporary, JSON.stringify(entries), 'utf8')
+      await rename(temporary, this.filePath)
+    })
+    this.writeQueue = write.catch(() => undefined)
+    await write
   }
 
   private async readEncrypted(): Promise<Record<string, string>> {

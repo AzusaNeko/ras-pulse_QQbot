@@ -76,6 +76,44 @@ export interface FavoriteUpdate {
   sold: boolean
 }
 
+export type BarkNotificationLevel = 'active' | 'timeSensitive'
+
+export interface BarkDevice {
+  id: string
+  name: string
+  enabled: boolean
+}
+
+export interface BarkSettings {
+  enabled: boolean
+  serverUrl: string
+  level: BarkNotificationLevel
+  includeImage: boolean
+  devices: BarkDevice[]
+}
+
+export interface BarkDeviceConfig extends BarkDevice {
+  keyConfigured: boolean
+}
+
+export interface BarkConfig extends Omit<BarkSettings, 'devices'> {
+  devices: BarkDeviceConfig[]
+}
+
+export interface SaveBarkDeviceInput extends BarkDevice {
+  /** Empty keeps the existing local key. It is never returned to the renderer. */
+  deviceKey?: string
+}
+
+export interface SaveBarkConfigInput extends Omit<BarkSettings, 'devices'> {
+  devices: SaveBarkDeviceInput[]
+}
+
+export interface BarkTestResult {
+  deviceId: string
+  deviceName: string
+}
+
 export interface AppSettings {
   notificationsEnabled: boolean
   soundEnabled: boolean
@@ -102,6 +140,7 @@ export interface AppSettings {
   qqCommandPanelAppId: string
   /** QQ robot accounts. The legacy single-account fields above are retained only for migration. */
   qqBots: QQBotAccount[]
+  bark: BarkSettings
 }
 
 export type QQBotTargetType = 'group' | 'c2c'
@@ -208,6 +247,10 @@ export interface MercariPulseApi {
   resyncInitialResults(id: string): Promise<AppSnapshot>
   checkAllNow(): Promise<{ requested: number; skipped: number }>
   testNotification(): Promise<{ supported: boolean }>
+  getBarkConfig(): Promise<BarkConfig>
+  saveBarkConfig(input: SaveBarkConfigInput): Promise<BarkConfig>
+  removeBarkDevice(deviceId: string): Promise<BarkConfig>
+  testBarkDevice(deviceId: string): Promise<BarkTestResult>
   getQQBotConfig(): Promise<QQBotConfig>
   saveQQBotConfig(input: SaveQQBotConfigInput): Promise<QQBotConfig>
   testQQBot(botId: string): Promise<{ delivered: number; failed: number }>

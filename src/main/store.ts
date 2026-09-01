@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import type { AppSettings, FavoriteItem, LogEntry, MercariItem, QQBotKeyword, Subscription } from '../shared/types'
+import type { AppSettings, BarkDevice, BarkSettings, FavoriteItem, LogEntry, MercariItem, QQBotKeyword, Subscription } from '../shared/types'
 import { buildMercariItemUrl, isMercariShopsItem, MERCARI_SHOPS_ITEM_TYPE } from './mercari-item-url'
 
 export interface PersistedState {
@@ -52,7 +52,14 @@ export const defaultState: PersistedState = {
     qqBotTargets: [],
     qqCommandPanelIds: {},
     qqCommandPanelAppId: '',
-    qqBots: []
+    qqBots: [],
+    bark: {
+      enabled: false,
+      serverUrl: 'https://api.day.app',
+      level: 'active',
+      includeImage: true,
+      devices: []
+    }
   },
   seenBySubscription: {},
   baselineReadyBySubscription: {},
@@ -106,6 +113,44 @@ function normalizeQQBots(settings: Partial<AppSettings> | undefined): AppSetting
     targets: (settings?.qqBotTargets ?? []).map((target) => ({ ...target, botId: 'legacy-default', label: /^自动发现的 QQ (?:群|私聊)$/.test(target.label ?? '') ? '' : target.label ?? '', keywords: normalizeQQKeywords(target.keywords) })),
     commandPanelIds: settings?.qqCommandPanelAppId === settings?.qqBotAppId ? settings?.qqCommandPanelIds ?? {} : {}
   }]
+}
+
+function normalizeBarkServerUrl(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) return defaultState.settings.bark.serverUrl
+  try {
+    const parsed = new URL(value.trim())
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.toString().replace(/\/$/, '') : defaultState.settings.bark.serverUrl
+  } catch {
+    return defaultState.settings.bark.serverUrl
+  }
+}
+
+function normalizeBarkSettings(settings: Partial<AppSettings> | undefined): BarkSettings {
+  const stored = settings?.bark as Partial<BarkSettings> | undefined
+  const devices = new Map<string, BarkDevice>()
+  if (Array.isArray(stored?.devices)) {
+    for (const entry of stored.devices) {
+      if (!entry || typeof entry !== 'object') continue
+      const candidate = entry as Partial<BarkDevice>
+      const id = typeof candidate.id === 'string' ? candidate.id.trim() : ''
+      if (!id || devices.has(id)) continue
+      devices.set(id, {
+        id,
+        name: typeof candidate.name === 'string' ? candidate.name.trim() : '',
+        enabled: Boolean(candidate.enabled)
+      })
+    }
+  }
+  return {
+    enabled: Boolean(stored?.enabled),
+    serverUrl: normalizeBarkServerUrl(stored?.serverUrl),
+    level: stored?.level === 'timeSensitive' ? 'timeSensitive' : 'active',
+    includeImage: typeof stored?.includeImage === 'boolean' ? stored.includeImage : true,
+    devices: [...devices.values()].map((device, index) => ({
+      ...device,
+      name: device.name || `Bark 设备 ${index + 1}`
+    }))
+  }
 }
 
 function normalizeStoredItem<T extends MercariItem | FavoriteItem>(item: T): T {
@@ -180,6 +225,7 @@ export class JsonStore implements StateStore {
           qqCommandPanelIds: parsed.settings?.qqCommandPanelIds ?? {},
           qqCommandPanelAppId: parsed.settings?.qqCommandPanelAppId ?? '',
           qqBots: normalizeQQBots(parsed.settings),
+          bark: normalizeBarkSettings(parsed.settings),
           maxUltraFastSubscriptions: normalizeSpeedQuota(parsed.settings?.maxUltraFastSubscriptions, defaultState.settings.maxUltraFastSubscriptions),
           maxFastSubscriptions: normalizeSpeedQuota(parsed.settings?.maxFastSubscriptions, defaultState.settings.maxFastSubscriptions),
           subscriptionVisibleCount: Math.max(1, Math.min(10, Number(parsed.settings?.subscriptionVisibleCount) || defaultState.settings.subscriptionVisibleCount)),

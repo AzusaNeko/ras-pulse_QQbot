@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AppSettings, BulkSubscriptionPatch, MercariItem, MonitorEvent, NewSubscription, QQCommandPanelSyncResult, SaveQQBotConfigInput, Subscription } from '../shared/types'
+import type { AppSettings, BulkSubscriptionPatch, MercariItem, MonitorEvent, NewSubscription, QQCommandPanelSyncResult, SaveBarkConfigInput, SaveQQBotConfigInput, Subscription } from '../shared/types'
 
 contextBridge.exposeInMainWorld('mercariPulse', {
   getAppVersion: () => ipcRenderer.invoke('app:get-version'),
@@ -18,6 +18,10 @@ contextBridge.exposeInMainWorld('mercariPulse', {
   resyncInitialResults: (id: string) => ipcRenderer.invoke('monitor:resync-initial', id),
   checkAllNow: () => ipcRenderer.invoke('monitor:check-all-now'),
   testNotification: () => ipcRenderer.invoke('notifications:test'),
+  getBarkConfig: () => ipcRenderer.invoke('bark:get-config'),
+  saveBarkConfig: (input: SaveBarkConfigInput) => ipcRenderer.invoke('bark:save-config', input),
+  removeBarkDevice: (deviceId: string) => ipcRenderer.invoke('bark:remove-device', deviceId),
+  testBarkDevice: (deviceId: string) => ipcRenderer.invoke('bark:test-device', deviceId),
   getQQBotConfig: () => ipcRenderer.invoke('qqbot:get-config'),
   saveQQBotConfig: (input: SaveQQBotConfigInput) => ipcRenderer.invoke('qqbot:save-config', input),
   testQQBot: (botId: string) => ipcRenderer.invoke('qqbot:test', botId),

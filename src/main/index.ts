@@ -1,7 +1,9 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, Notification, screen, shell, Tray } from 'electron'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { AppSettings, BulkSubscriptionPatch, FavoriteUpdate, MercariItem, NewSubscription, QQBotAccount, QQBotConfig, QQBotTarget, SaveQQBotConfigInput, Subscription } from '../shared/types'
+import type { AppSettings, BarkConfig, BarkTestResult, BulkSubscriptionPatch, FavoriteUpdate, MercariItem, NewSubscription, QQBotAccount, QQBotConfig, QQBotTarget, SaveBarkConfigInput, SaveQQBotConfigInput, Subscription } from '../shared/types'
+import { exposeBarkConfig, prepareBarkConfig } from './bark-config'
+import { BarkNotifier } from './bark-notifier'
 import { MercariClient } from './mercari-client'
 import { isSupportedMercariImageUrl, parseMercariItemReference } from './mercari-item-url'
 import { MonitorEngine } from './monitor-engine'
@@ -17,6 +19,8 @@ let quitting = false
 let engine: MonitorEngine
 let mercariClient: MercariClient
 let secretStore: SecretStore
+let barkSecretStore: SecretStore
+let barkNotifier: BarkNotifier
 const qqNotifiers = new Map<string, QQBotNotifier>()
 // Legacy notifier is retained only while loading pre-v0.4.46 state; active robots use qqNotifiers.
 let qqNotifier: QQBotNotifier
@@ -321,6 +325,36 @@ function registerIpc(): void {
       )
     }
   })
+  ipcMain.handle('bark:get-config', () => exposeBarkConfig(engine.snapshot().settings.bark, (deviceId) => barkSecretStore.has(deviceId)))
+  ipcMain.handle('bark:save-config', async (_event, input: SaveBarkConfigInput): Promise<BarkConfig> => {
+    const previous = engine.snapshot().settings.bark
+    const prepared = await prepareBarkConfig(input, (deviceId) => barkSecretStore.get(deviceId))
+    for (const entry of prepared.keysToStore) await barkSecretStore.set(entry.deviceId, entry.deviceKey)
+    await engine.updateSettings({ bark: prepared.settings })
+    const retainedIds = new Set(prepared.settings.devices.map((device) => device.id))
+    for (const device of previous.devices) if (!retainedIds.has(device.id)) await barkSecretStore.delete(device.id)
+    return exposeBarkConfig(prepared.settings, (deviceId) => barkSecretStore.has(deviceId))
+  })
+  ipcMain.handle('bark:remove-device', async (_event, deviceId: string): Promise<BarkConfig> => {
+    const previous = engine.snapshot().settings.bark
+    if (!previous.devices.some((device) => device.id === deviceId)) throw new Error('未找到 Bark 设备')
+    const devices = previous.devices.filter((device) => device.id !== deviceId)
+    const settings = {
+      ...previous,
+      enabled: previous.enabled && devices.some((device) => device.enabled),
+      devices
+    }
+    await engine.updateSettings({ bark: settings })
+    await barkSecretStore.delete(deviceId)
+    return exposeBarkConfig(settings, (id) => barkSecretStore.has(id))
+  })
+  ipcMain.handle('bark:test-device', async (_event, deviceId: string): Promise<BarkTestResult> => {
+    const snapshot = engine.snapshot()
+    const device = snapshot.settings.bark.devices.find((entry) => entry.id === deviceId)
+    if (!device) throw new Error('未找到 Bark 设备')
+    await barkNotifier.sendTest(device, snapshot.settings.bark, snapshot.globalRecentItems[0])
+    return { deviceId: device.id, deviceName: device.name }
+  })
   ipcMain.handle('qqbot:get-config', async (): Promise<QQBotConfig> => {
     const settings = engine.snapshot().settings
     return {
@@ -480,9 +514,15 @@ app.whenReady().then(async () => {
   if (!hasSingleInstanceLock) return
   const userData = app.getPath('userData')
   secretStore = new SecretStore(join(userData, 'qqbot-secret.dat'))
+  barkSecretStore = new SecretStore(join(userData, 'bark-device-keys.dat'), 'Bark 设备密钥')
   mercariClient = new MercariClient((input, init) => net.fetch(input, init))
   engine = new MonitorEngine(mercariClient, new JsonStore(join(userData, 'state.json')))
   await engine.start()
+  barkNotifier = new BarkNotifier(
+    barkSecretStore,
+    (input, init) => net.fetch(input, init),
+    (level, message) => void engine.recordDiagnostic(level, message).catch((error) => console.error(`Bark 诊断日志写入失败：${error}`))
+  )
   syncWindowsStartup(engine.snapshot().settings)
   const storedBots = engine.snapshot().settings.qqBots
   const normalizedBots = storedBots.map((bot) => ({ ...bot, targets: deduplicateQQTargets(bot.targets) }))
@@ -569,13 +609,20 @@ app.whenReady().then(async () => {
     if (settings.notificationsEnabled && subscription?.windowsNotificationsEnabled !== false) {
       void showProductNotification(item, settings)
     }
+    void barkNotifier.sendItem(item, settings.bark).catch(() => {
+      void engine.recordDiagnostic('warn', 'Bark 手机推送发生未预期错误，已停止本次发送。')
+    })
     void Promise.allSettled(settings.qqBots.filter((bot) => bot.enabled).map((bot) => getQQNotifier(bot.id).sendItem(item, bot))).then((results) => {
       for (const result of results) if (result.status === 'rejected') console.error(`QQ 推送失败：${result.reason instanceof Error ? result.reason.message : String(result.reason)}`)
     })
   })
   engine.on('favoriteUpdate', (favoriteUpdate) => {
     broadcast({ type: 'favorite-update', favoriteUpdate })
-    if (engine.snapshot().settings.notificationsEnabled) showFavoriteNotification(favoriteUpdate, engine.snapshot().settings)
+    const settings = engine.snapshot().settings
+    if (settings.notificationsEnabled) showFavoriteNotification(favoriteUpdate, settings)
+    void barkNotifier.sendFavoriteUpdate(favoriteUpdate, settings.bark).catch(() => {
+      void engine.recordDiagnostic('warn', 'Bark 手机推送发生未预期错误，已停止本次发送。')
+    })
   })
   registerIpc()
   void connectQQBots().catch((error) => console.error(`QQ 机器人自动连接失败：${error instanceof Error ? error.message : String(error)}`))
