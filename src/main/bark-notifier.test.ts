@@ -56,9 +56,9 @@ describe('BarkNotifier', () => {
       level: 'timeSensitive',
       group: '相机',
       url: item.url,
-      icon: item.thumbnail
+      image: item.thumbnail
     })
-    expect(buildBarkItemPayload(item, { ...settings, includeImage: false })).not.toHaveProperty('icon')
+    expect(buildBarkItemPayload(item, { ...settings, includeImage: false })).not.toHaveProperty('image')
   })
 
   it('构造收藏降价和售出变化且不指定声音或关键通知', () => {
@@ -158,6 +158,6 @@ describe('BarkNotifier', () => {
     const payload = JSON.parse(String(fetchMock.mock.calls[0][1]?.body))
     expect(payload).toMatchObject({ title: 'Mercari Pulse Bark 测试通知', group: '测试' })
     expect(payload).not.toHaveProperty('url')
-    expect(payload).not.toHaveProperty('icon')
+    expect(payload).not.toHaveProperty('image')
   })
 })

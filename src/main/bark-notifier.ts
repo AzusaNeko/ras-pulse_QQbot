@@ -15,7 +15,7 @@ export interface BarkPayload {
   level: BarkSettings['level']
   group?: string
   url?: string
-  icon?: string
+  image?: string
 }
 
 export interface BarkBroadcastResult {
@@ -46,7 +46,7 @@ export function buildBarkItemPayload(item: MercariItem, settings: BarkSettings, 
     level: settings.level,
     group: item.keyword,
     url: item.url,
-    ...(settings.includeImage && isSupportedMercariImageUrl(item.thumbnail) ? { icon: item.thumbnail } : {})
+    ...(settings.includeImage && isSupportedMercariImageUrl(item.thumbnail) ? { image: item.thumbnail } : {})
   }
 }
 
@@ -67,7 +67,7 @@ export function buildBarkFavoritePayload(update: FavoriteUpdate, settings: BarkS
     level: settings.level,
     group: '收藏',
     url: update.favorite.url,
-    ...(settings.includeImage && isSupportedMercariImageUrl(update.favorite.thumbnail) ? { icon: update.favorite.thumbnail } : {})
+    ...(settings.includeImage && isSupportedMercariImageUrl(update.favorite.thumbnail) ? { image: update.favorite.thumbnail } : {})
   }
 }
 
