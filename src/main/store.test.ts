@@ -11,6 +11,27 @@ afterEach(async () => {
 })
 
 describe('JsonStore', () => {
+  it('为旧状态补齐默认关闭的 Bark 配置', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'mercari-pulse-store-'))
+    temporaryDirectories.push(directory)
+    const path = join(directory, 'state.json')
+    await import('node:fs/promises').then(({ writeFile }) => writeFile(path, JSON.stringify({
+      ...structuredClone(defaultState),
+      settings: { notificationsEnabled: false }
+    }), 'utf8'))
+
+    const state = await new JsonStore(path).load()
+
+    expect(state.settings.notificationsEnabled).toBe(false)
+    expect(state.settings.bark).toEqual({
+      enabled: false,
+      serverUrl: 'https://api.day.app',
+      level: 'active',
+      includeImage: true,
+      devices: []
+    })
+  })
+
   it('serializes simultaneous saves so every keyword check can persist safely', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'mercari-pulse-store-'))
     temporaryDirectories.push(directory)

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type JSX, type ReactNode } from 'react'
-import type { AppSnapshot, BulkSubscriptionPatch, FavoriteItem, LogEntry, MercariItem, MonitorStatus, NewSubscription, QQBotAccount, QQBotConfig, QQBotTarget, Subscription } from '../../shared/types'
+import type { AppSnapshot, BarkConfig, BarkDeviceConfig, BulkSubscriptionPatch, FavoriteItem, LogEntry, MercariItem, MonitorStatus, NewSubscription, QQBotAccount, QQBotConfig, QQBotTarget, SaveBarkConfigInput, Subscription } from '../../shared/types'
 import { isSoldMercariStatus } from '../../shared/mercari-status'
 
 const statusLabels: Record<MonitorStatus, string> = {
@@ -356,6 +356,92 @@ function QQBotSettings({ config, onChange, onNotice }: { config: QQBotConfig; on
   </>
 }
 
+function BarkSettingsPanel({ config, onChange, onNotice }: { config: BarkConfig; onChange: (config: BarkConfig) => void; onNotice: (message: string) => void }): JSX.Element {
+  const [draft, setDraft] = useState(config)
+  const [deviceKeys, setDeviceKeys] = useState<Record<string, string>>({})
+  const [busy, setBusy] = useState(false)
+  const [testingId, setTestingId] = useState<string>()
+
+  useEffect(() => {
+    setDraft(config)
+    setDeviceKeys({})
+  }, [config])
+
+  const changeDevice = (id: string, patch: Partial<BarkDeviceConfig>): void => {
+    setDraft((value) => ({ ...value, devices: value.devices.map((device) => device.id === id ? { ...device, ...patch } : device) }))
+  }
+  const addDevice = (): void => setDraft((value) => ({
+    ...value,
+    devices: [...value.devices, { id: crypto.randomUUID(), name: '', enabled: true, keyConfigured: false }]
+  }))
+  const save = async (): Promise<BarkConfig | undefined> => {
+    setBusy(true)
+    try {
+      const input: SaveBarkConfigInput = {
+        enabled: draft.enabled,
+        serverUrl: draft.serverUrl,
+        level: draft.level,
+        includeImage: draft.includeImage,
+        devices: draft.devices.map(({ keyConfigured: _keyConfigured, ...device }) => ({
+          ...device,
+          deviceKey: deviceKeys[device.id]?.trim() || undefined
+        }))
+      }
+      const saved = await window.mercariPulse.saveBarkConfig(input)
+      onChange(saved)
+      onNotice('Bark 手机推送配置已保存')
+      return saved
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : String(error))
+      return undefined
+    } finally { setBusy(false) }
+  }
+  const removeDevice = async (deviceId: string): Promise<void> => {
+    if (!config.devices.some((device) => device.id === deviceId)) {
+      setDraft((value) => ({ ...value, devices: value.devices.filter((device) => device.id !== deviceId) }))
+      setDeviceKeys((keys) => { const next = { ...keys }; delete next[deviceId]; return next })
+      return
+    }
+    try {
+      const saved = await window.mercariPulse.removeBarkDevice(deviceId)
+      onChange(saved)
+      onNotice('Bark 设备已删除')
+    } catch (error) { onNotice(error instanceof Error ? error.message : String(error)) }
+  }
+  const testDevice = async (deviceId: string): Promise<void> => {
+    const saved = await save()
+    if (!saved?.devices.some((device) => device.id === deviceId && device.keyConfigured)) return
+    setTestingId(deviceId)
+    try {
+      const result = await window.mercariPulse.testBarkDevice(deviceId)
+      onNotice(`Bark 测试通知已发送至“${result.deviceName}”`)
+    } catch (error) { onNotice(error instanceof Error ? error.message : String(error)) } finally { setTestingId(undefined) }
+  }
+  const insecure = draft.serverUrl.trim().toLocaleLowerCase().startsWith('http://')
+
+  return <section className="bark-panel">
+    <div className="bark-panel-heading"><div><p className="eyebrow">BARK PUSH</p><h2>Bark 手机推送</h2><span>向所有启用的 iPhone 广播上新和收藏变化；deviceKey 使用 Windows 加密存储。</span></div><label className="switch" title={draft.enabled ? '关闭 Bark 手机推送' : '开启 Bark 手机推送'}><input type="checkbox" checked={draft.enabled} onChange={(event) => setDraft((value) => ({ ...value, enabled: event.target.checked }))} /><span /></label></div>
+    <div className="bark-global-fields">
+      <label>Bark Server<input value={draft.serverUrl} onChange={(event) => setDraft((value) => ({ ...value, serverUrl: event.target.value }))} placeholder="https://api.day.app" /></label>
+      <label>通知等级<select value={draft.level} onChange={(event) => setDraft((value) => ({ ...value, level: event.target.value as BarkConfig['level'] }))}><option value="active">普通通知</option><option value="timeSensitive">时效性通知</option></select></label>
+      <label className="bark-image-check"><input type="checkbox" checked={draft.includeImage} onChange={(event) => setDraft((value) => ({ ...value, includeImage: event.target.checked }))} /> 显示商品图片</label>
+    </div>
+    {insecure && <div className="bark-http-warning"><b>明文连接警告</b><span>当前 Server 使用 HTTP，deviceKey 与通知内容会以明文方式传输。</span></div>}
+    <div className="bark-device-heading"><div><b>Bark 设备</b><span>每台 iPhone 在 Bark App 中复制自己的推送 Key。</span></div><button className="secondary-button" type="button" onClick={addDevice}>+ 添加设备</button></div>
+    <div className="bark-devices">
+      {draft.devices.map((device) => <div className="bark-device" key={device.id}>
+        <label className="switch compact-switch" title={device.enabled ? '停用设备' : '启用设备'}><input type="checkbox" checked={device.enabled} onChange={(event) => changeDevice(device.id, { enabled: event.target.checked })} /><span /></label>
+        <input value={device.name} onChange={(event) => changeDevice(device.id, { name: event.target.value })} placeholder="设备名称（可选）" />
+        <label className="bark-key-field"><span>deviceKey {device.keyConfigured && <em>已保存</em>}</span><input type="password" autoComplete="new-password" value={deviceKeys[device.id] ?? ''} onChange={(event) => setDeviceKeys((keys) => ({ ...keys, [device.id]: event.target.value }))} placeholder={device.keyConfigured ? '留空则保留当前 Key' : '粘贴 Bark 推送 Key'} /></label>
+        <button className="secondary-button" type="button" disabled={busy || testingId === device.id} onClick={() => void testDevice(device.id)}>{testingId === device.id ? '测试中…' : '测试'}</button>
+        <button className="icon-button danger" type="button" title="删除 Bark 设备和本地密钥" onClick={() => void removeDevice(device.id)}>×</button>
+      </div>)}
+      {!draft.devices.length && <div className="bark-empty">还没有 Bark 设备。添加设备并保存 Key 后即可测试。</div>}
+    </div>
+    <div className="bark-actions"><button className="primary" type="button" disabled={busy} onClick={() => void save()}>{busy ? '保存中…' : '保存 Bark 配置'}</button><span>手机声音由各设备的 Bark App 与 iOS 通知设置管理。</span></div>
+  </section>
+}
+
 export function App(): JSX.Element {
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null)
   const [bootError, setBootError] = useState('')
@@ -363,6 +449,7 @@ export function App(): JSX.Element {
   const [page, setPage] = useState<'dashboard' | 'favorites' | 'logs' | 'settings' | 'qqbots'>('dashboard')
   const [notice, setNotice] = useState('')
   const [qqConfig, setQQConfig] = useState<QQBotConfig | null>(null)
+  const [barkConfig, setBarkConfig] = useState<BarkConfig | null>(null)
   const [itemFilter, setItemFilter] = useState<'all' | string>('all')
   const [favoriteFilter, setFavoriteFilter] = useState<'all' | 'auction' | 'direct' | 'sold' | 'available'>('all')
   const [pendingRemoval, setPendingRemoval] = useState<Subscription | null>(null)
@@ -375,8 +462,8 @@ export function App(): JSX.Element {
       setBootError('桌面桥接组件未能加载。请安装最新版本后重新启动应用。')
       return
     }
-    void Promise.all([window.mercariPulse.getSnapshot(), window.mercariPulse.getQQBotConfig(), window.mercariPulse.getAppVersion()])
-      .then(([nextSnapshot, nextQQConfig, nextVersion]) => { setSnapshot(nextSnapshot); setQQConfig(nextQQConfig); setAppVersion(nextVersion) })
+    void Promise.all([window.mercariPulse.getSnapshot(), window.mercariPulse.getQQBotConfig(), window.mercariPulse.getBarkConfig(), window.mercariPulse.getAppVersion()])
+      .then(([nextSnapshot, nextQQConfig, nextBarkConfig, nextVersion]) => { setSnapshot(nextSnapshot); setQQConfig(nextQQConfig); setBarkConfig(nextBarkConfig); setAppVersion(nextVersion) })
       .catch((error) => setBootError(String(error)))
     return window.mercariPulse.onMonitorEvent((event) => {
       if (event.snapshot) {
@@ -527,6 +614,7 @@ export function App(): JSX.Element {
             <Setting label="默认检查间隔" detail="0.1 秒与 0.5 秒模式请求频繁，更容易触发限流"><select value={snapshot.settings.defaultIntervalMs} onChange={(e) => void action(window.mercariPulse.updateSettings({ defaultIntervalMs: Number(e.target.value) }))}><option value="100">0.1 秒（极速）</option><option value="500">0.5 秒（快速）</option><option value="1000">1 秒</option><option value="2000">2 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option></select></Setting>
             <Setting label="当前版本" detail="版本号由当前运行的安装包自动读取"><span className="app-version-badge">V{appVersion || '读取中'}</span></Setting>
           </section>
+          {barkConfig && <BarkSettingsPanel config={barkConfig} onChange={setBarkConfig} onNotice={setNotice} />}
           <section className="settings-panel personalization-panel">
             <div className="personalization-heading"><p className="eyebrow">PERSONALIZATION</p><h2>个性化设置</h2><span>选择偏好的界面主题颜色，设置会自动保存。</span></div>
             <Setting label="主题颜色" detail="改变软件界面配色，不影响商品图片"><select value={snapshot.settings.theme} onChange={(e) => void action(window.mercariPulse.updateSettings({ theme: e.target.value as AppSnapshot['settings']['theme'] }))}><option value="emerald">翡翠绿（默认）</option><option value="sapphire">深海蓝</option><option value="violet">暮光紫</option><option value="rose">玫瑰粉</option><option value="amber">琥珀金</option><option value="obsidian">曜石黑</option><option value="porcelain">极简白</option></select></Setting>
